@@ -11,7 +11,8 @@ import { RolesList } from './components/RolesList';
 import { SecretsList } from './components/SecretsList';
 import { ServiceAccountsList } from './components/ServiceAccountsList';
 import { YamlPreview } from './components/YamlPreview';
-import { clearConfig, loadConfig, saveConfig } from './utils/localStorage';
+import { ApiService } from './services/ApiService';
+import { clearConfig, loadConfig } from './utils/localStorage'; // Keep for legacy/fallback if needed, or remove saveConfig/loadConfig usage
 
 import { ConfigMapManager } from './components/ConfigMapManager';
 import { DockerRunPopup } from './components/DockerRunPopup';
@@ -55,10 +56,10 @@ function App() {
   const hideDemoIcons = import.meta.env.VITE_HIDE_DEMO_ICONS === 'true';
   // Add a flag to hide header actions if ?q=plaground or ?q=playground is present
   const hideHeaderActions = typeof window !== 'undefined' && (window.location.search.includes('q=plaground') || window.location.search.includes('q=playground'));
-  
+
   // Initialize state with loading flag
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [projectSettings, setProjectSettings] = useState<ProjectSettings>({
     name: 'my-project',
     description: '',
@@ -129,12 +130,13 @@ function App() {
   // Auto-save functionality
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedRef = useRef<number>(0);
+  const [projectId, setProjectId] = useState<number | null>(null);
 
   // using custom hook useTheme to get value which I passed in ThemeProvider
   const { isDarkModeEnabled } = useTheme();
 
   // Force save function for immediate saves
-  const forceSave = useCallback(() => {
+  const forceSave = useCallback(async () => {
     try {
       const config = {
         deployments,
@@ -149,17 +151,23 @@ function App() {
         projectSettings,
         generatedYaml
       };
-      const success = saveConfig(config);
-      if (success) {
+
+      if (projectId) {
+        await ApiService.updateProject(projectId, config);
         lastSavedRef.current = Date.now();
         console.log('Configuration force-saved successfully');
+        return true;
+      } else {
+        // Create if not exists (should have been created on load)
+        const project = await ApiService.createProject(projectSettings.name || 'My Project', config as any);
+        setProjectId(project.id);
+        return true;
       }
-      return success;
     } catch (e) {
       console.warn('Force save failed:', e);
       return false;
     }
-  }, [deployments, daemonSets, jobs, configMaps, secrets, serviceAccounts, roles, clusterRoles, namespaces, projectSettings, generatedYaml]);
+  }, [deployments, daemonSets, jobs, configMaps, secrets, serviceAccounts, roles, clusterRoles, namespaces, projectSettings, generatedYaml, projectId]);
 
   // Auto-save function
   const autoSave = useCallback(() => {
@@ -167,7 +175,7 @@ function App() {
       clearTimeout(autoSaveTimeoutRef.current);
     }
 
-    autoSaveTimeoutRef.current = window.setTimeout(() => {
+    autoSaveTimeoutRef.current = window.setTimeout(async () => {
       try {
         const config = {
           deployments,
@@ -183,15 +191,20 @@ function App() {
           generatedYaml,
           roleBindings
         };
-        const success = saveConfig(config);
-        if (success) {
+
+        if (projectId) {
+          await ApiService.updateProject(projectId, config);
           lastSavedRef.current = Date.now();
+        } else {
+          // If we are editing but no project ID yet (e.g. very first load failed), try create
+          const project = await ApiService.createProject(projectSettings.name || 'My Project', config as any);
+          setProjectId(project.id);
         }
       } catch (e) {
         console.warn('Auto-save failed:', e);
       }
     }, 3000); // 3 second delay
-  }, [deployments, daemonSets, jobs, configMaps, secrets, serviceAccounts, roles, clusterRoles, namespaces, projectSettings, generatedYaml, roleBindings]);
+  }, [deployments, daemonSets, jobs, configMaps, secrets, serviceAccounts, roles, clusterRoles, namespaces, projectSettings, generatedYaml, roleBindings, projectId]);
 
   // Update generated YAML when configuration changes
   useEffect(() => {
@@ -222,29 +235,90 @@ function App() {
 
   // Load saved configuration on mount
   useEffect(() => {
-    try {
-      const saved = loadConfig();
-      if (saved) {
-        if (saved.projectSettings) setProjectSettings(saved.projectSettings);
-        if (saved.deployments) setDeployments(saved.deployments);
-        if (saved.daemonSets) setDaemonSets(saved.daemonSets);
-        if (saved.namespaces && saved.namespaces.length > 0) setNamespaces(saved.namespaces);
-        if (saved.configMaps) setConfigMaps(saved.configMaps);
-        if (saved.secrets) setSecrets(saved.secrets);
-        if (saved.serviceAccounts) setServiceAccounts(saved.serviceAccounts);
-        if (saved.roles) setRoles(saved.roles);
-        if (saved.clusterRoles) setClusterRoles(saved.clusterRoles);
-        if (saved.jobs) setJobs(saved.jobs);
-        if (saved.generatedYaml) setGeneratedYaml(saved.generatedYaml);
-        if (saved.roleBindings) setRoleBindings(saved.roleBindings);
-        console.log('Configuration loaded from localStorage');
-      } else if (typeof window !== 'undefined' && window.location.search.includes('q=playground')) {
-        setGeneratedYaml(`# Playground Mode\n# Example Deployment\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: playground-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: playground\n  template:\n    metadata:\n      labels:\n        app: playground\n    spec:\n      containers:\n        - name: playground\n          image: nginx:latest\n`);
+    const loadProject = async () => {
+      try {
+        const projects = await ApiService.getProjects();
+        let saved: any = null;
+
+        if (projects.length > 0) {
+          // Load the first project for now
+          const projectData = await ApiService.getProject(projects[0].id);
+          setProjectId(projectData.id);
+          if (projectData.data) {
+            saved = JSON.parse(projectData.data);
+          }
+        } else {
+          // Check local storage for migration or just create new
+          const localSaved = loadConfig();
+          if (localSaved) {
+            // Migrate local storage to backend
+            const newProject = await ApiService.createProject(localSaved.projectSettings?.name || 'My Project', localSaved as any);
+            setProjectId(newProject.id);
+            saved = localSaved;
+            console.log('Migrated localStorage to backend');
+          } else {
+            // Create default new project
+            const initialConfig = {
+              projectSettings: {
+                name: 'My Project',
+                description: '',
+                globalLabels: {},
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              },
+              deployments: [],
+              daemonSets: [],
+              jobs: [],
+              configMaps: [],
+              secrets: [],
+              serviceAccounts: [],
+              roles: [],
+              clusterRoles: [],
+              namespaces: [{
+                name: 'default',
+                labels: {},
+                annotations: {},
+                createdAt: new Date().toISOString()
+              }],
+              roleBindings: []
+            };
+            const newProject = await ApiService.createProject('My Project', initialConfig as any);
+            setProjectId(newProject.id);
+            // Use initial state as is
+            return;
+          }
+        }
+
+        if (saved) {
+          if (saved.projectSettings) setProjectSettings(saved.projectSettings);
+          if (saved.deployments) setDeployments(saved.deployments);
+          if (saved.daemonSets) setDaemonSets(saved.daemonSets);
+          if (saved.namespaces && saved.namespaces.length > 0) setNamespaces(saved.namespaces);
+          if (saved.configMaps) setConfigMaps(saved.configMaps);
+          if (saved.secrets) setSecrets(saved.secrets);
+          if (saved.serviceAccounts) setServiceAccounts(saved.serviceAccounts);
+          if (saved.roles) setRoles(saved.roles);
+          if (saved.clusterRoles) setClusterRoles(saved.clusterRoles);
+          if (saved.jobs) setJobs(saved.jobs);
+          if (saved.generatedYaml) setGeneratedYaml(saved.generatedYaml);
+          if (saved.roleBindings) setRoleBindings(saved.roleBindings);
+          console.log('Configuration loaded from backend');
+        }
+      } catch (e) {
+        console.warn('Failed to load project from backend:', e);
+        // Fallback to local storage if API fails? 
+        // For now, implicit requirement says "defer to backend". 
+        // But if completely offline, maybe we should warn.
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Failed to load saved configuration:', e);
-    } finally {
+    };
+
+    if (typeof window !== 'undefined' && window.location.search.includes('q=playground')) {
+      setGeneratedYaml(`# Playground Mode\n# Example Deployment\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: playground-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: playground\n  template:\n    metadata:\n      labels:\n        app: playground\n    spec:\n      containers:\n        - name: playground\n          image: nginx:latest\n`);
       setIsLoading(false);
+    } else {
+      loadProject();
     }
   }, []);
 
@@ -329,22 +403,22 @@ function App() {
 
   // Helper function to remove old global labels and apply new ones
   const cleanAndMergeLabels = (
-    resourceLabels: Record<string, string>, 
+    resourceLabels: Record<string, string>,
     oldGlobalLabels: Record<string, string> = {},
     newGlobalLabels: Record<string, string> = projectSettings.globalLabels,
     projectName: string = projectSettings.name
   ) => {
     // Start with a copy of resource labels
     const cleanedLabels = { ...resourceLabels };
-    
+
     // Remove ALL old global labels (including the old project label)
     Object.keys(oldGlobalLabels).forEach(key => {
       delete cleanedLabels[key];
     });
-    
+
     // Remove old project label specifically (in case it wasn't in oldGlobalLabels)
     delete cleanedLabels.project;
-    
+
     // Apply new global labels first, then resource-specific labels, then project label
     return {
       ...newGlobalLabels,
@@ -420,7 +494,7 @@ function App() {
 
     const newDeployments = deployments.filter((_, i) => i !== index);
     setDeployments(newDeployments);
-    
+
     // Adjust selected deployment index
     if (selectedDeployment >= index) {
       setSelectedDeployment(Math.max(0, selectedDeployment - 1));
@@ -445,7 +519,7 @@ function App() {
         }))
       }
     };
-    
+
     const newDeployments = [...deployments];
     newDeployments.splice(index + 1, 0, duplicatedDeployment);
     setDeployments(newDeployments);
@@ -472,20 +546,20 @@ function App() {
 
     // Remove the namespace
     setNamespaces(namespaces.filter(ns => ns.name !== namespaceName));
-    
+
     // Move any deployments using this namespace to 'default'
-    const updatedDeployments = deployments.map(deployment => 
-      deployment.namespace === namespaceName 
+    const updatedDeployments = deployments.map(deployment =>
+      deployment.namespace === namespaceName
         ? { ...deployment, namespace: 'default' }
         : deployment
     );
     setDeployments(updatedDeployments);
 
     // Move any ConfigMaps/Secrets using this namespace to 'default'
-    setConfigMaps(configMaps.map(cm => 
+    setConfigMaps(configMaps.map(cm =>
       cm.namespace === namespaceName ? { ...cm, namespace: 'default' } : cm
     ));
-    setSecrets(secrets.map(secret => 
+    setSecrets(secrets.map(secret =>
       secret.namespace === namespaceName ? { ...secret, namespace: 'default' } : secret
     ));
 
@@ -504,7 +578,7 @@ function App() {
       labels: cleanAndMergeLabels(namespaceToDuplicate.labels),
       createdAt: new Date().toISOString()
     };
-    
+
     const newNamespaces = [...namespaces];
     newNamespaces.splice(index + 1, 0, duplicatedNamespace);
     setNamespaces(newNamespaces);
@@ -526,7 +600,7 @@ function App() {
 
   const handleDeleteConfigMap = (configMapName: string) => {
     setConfigMaps(configMaps.filter(cm => cm.name !== configMapName));
-    
+
     // Remove references from deployments
     const updatedDeployments = deployments.map(deployment => ({
       ...deployment,
@@ -550,7 +624,7 @@ function App() {
       labels: cleanAndMergeLabels(configMapToDuplicate.labels),
       createdAt: new Date().toISOString()
     };
-    
+
     const newConfigMaps = [...configMaps];
     newConfigMaps.splice(index + 1, 0, duplicatedConfigMap);
     setConfigMaps(newConfigMaps);
@@ -583,7 +657,7 @@ function App() {
 
   const handleDeleteSecret = (secretName: string) => {
     setSecrets(secrets.filter(s => s.name !== secretName));
-    
+
     // Remove references from deployments
     const updatedDeployments = deployments.map(deployment => ({
       ...deployment,
@@ -637,7 +711,7 @@ function App() {
     const newServiceAccounts = [...serviceAccounts];
     newServiceAccounts[index] = serviceAccountWithGlobalLabels;
     setServiceAccounts(newServiceAccounts);
-    
+
     // Update deployments that reference this service account
     const updatedDeployments = deployments.map(deployment => {
       if (deployment.serviceAccount === oldServiceAccount.name) {
@@ -649,7 +723,7 @@ function App() {
       return deployment;
     });
     setDeployments(updatedDeployments);
-    
+
     // Update daemonSets that reference this service account
     const updatedDaemonSets = daemonSets.map(daemonSet => {
       if (daemonSet.serviceAccount === oldServiceAccount.name) {
@@ -661,7 +735,7 @@ function App() {
       return daemonSet;
     });
     setDaemonSets(updatedDaemonSets);
-    
+
     setShowServiceAccountManager(false);
     setEditingServiceAccountIndex(undefined);
   };
@@ -671,7 +745,7 @@ function App() {
     if (index > -1) {
       const newServiceAccounts = serviceAccounts.filter((_, i) => i !== index);
       setServiceAccounts(newServiceAccounts);
-      
+
       // Remove service account reference from deployments that use it
       const updatedDeployments = deployments.map(deployment => {
         if (deployment.serviceAccount === serviceAccountName) {
@@ -683,7 +757,7 @@ function App() {
         return deployment;
       });
       setDeployments(updatedDeployments);
-      
+
       // Remove service account reference from daemonSets that use it
       const updatedDaemonSets = daemonSets.map(daemonSet => {
         if (daemonSet.serviceAccount === serviceAccountName) {
@@ -695,7 +769,7 @@ function App() {
         return daemonSet;
       });
       setDaemonSets(updatedDaemonSets);
-      
+
       if (selectedServiceAccount >= newServiceAccounts.length) {
         setSelectedServiceAccount(Math.max(0, newServiceAccounts.length - 1));
       }
@@ -736,7 +810,7 @@ function App() {
     if (index > -1) {
       const newRoles = roles.filter(role => role.metadata.name !== roleName);
       setRoles(newRoles);
-      
+
       // Adjust selected index if needed
       if (selectedRole >= newRoles.length) {
         setSelectedRole(Math.max(0, newRoles.length - 1));
@@ -781,10 +855,10 @@ function App() {
       if (label.key) acc[label.key] = label.value;
       return acc;
     }, {} as Record<string, string>);
-    
+
     // Apply global labels
     const mergedLabels = cleanAndMergeLabels(jobLabelsAsObject);
-    
+
     // Convert back to array format for Job interface
     const jobWithGlobalLabels = {
       ...job,
@@ -811,10 +885,10 @@ function App() {
       if (label.key) acc[label.key] = label.value;
       return acc;
     }, {} as Record<string, string>);
-    
+
     // Apply global labels
     const mergedLabels = cleanAndMergeLabels(jobLabelsAsObject);
-    
+
     // Convert back to array format for Job interface
     const jobWithGlobalLabels = {
       ...updatedJob,
@@ -829,7 +903,7 @@ function App() {
   const handleUpdateProjectSettings = (newSettings: ProjectSettings) => {
     const oldGlobalLabels = projectSettings.globalLabels;
     setProjectSettings(newSettings);
-    
+
     // Update all existing resources with new global labels, properly removing old ones
     const updatedDeployments = deployments.map(deployment => ({
       ...deployment,
@@ -868,10 +942,10 @@ function App() {
         if (label.key) acc[label.key] = label.value;
         return acc;
       }, {} as Record<string, string>);
-      
+
       // Apply new global labels
       const mergedLabels = cleanAndMergeLabels(jobLabelsAsObject, oldGlobalLabels, newSettings.globalLabels, newSettings.name);
-      
+
       // Convert back to array format
       return {
         ...job,
@@ -885,24 +959,24 @@ function App() {
     if (deployments.length === 0) {
       return;
     }
-    
+
     // Filter out deployments without app names
     const validDeployments = deployments.filter(d => d.appName);
     if (validDeployments.length === 0) {
       return;
     }
-    
+
     const yaml = generateMultiDeploymentYaml(validDeployments, namespaces, configMaps, secrets, projectSettings);
     const blob = new Blob([yaml], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    
+
     // Create filename based on project name and number of deployments
-    const filename = validDeployments.length === 1 
+    const filename = validDeployments.length === 1
       ? `${projectSettings.name}-${validDeployments[0].appName}-deployment.yaml`
       : `${projectSettings.name}-kubernetes-deployments-${validDeployments.length}.yaml`;
-    
+
     a.download = filename;
     document.body.appendChild(a);
     a.click();
@@ -932,7 +1006,7 @@ function App() {
       clusterRoles,
       roleBindings // Pass roleBindings here
     );
-    
+
     let finalYaml = yaml;
     if (
       validDeployments.length === 0 &&
@@ -949,7 +1023,7 @@ function App() {
     ) {
       finalYaml = '# No resources configured\n# Create your first deployment, daemonset, job, service account, configmap, or secret to see the generated YAML';
     }
-    
+
     return finalYaml;
   };
 
@@ -1010,7 +1084,7 @@ function App() {
   const getFilterType = (): 'all' | 'deployments' | 'daemonsets' | 'namespaces' | 'configmaps' | 'secrets' | 'serviceaccounts' | 'roles' | 'rolebindings' | 'jobs' | 'cronjobs' => {
     // Show all resources when showAllResources is true
     if (showAllResources) return 'all';
-    
+
     // Show specific resources based on sidebar tab
     if (sidebarTab === 'deployments') return 'deployments';
     if (sidebarTab === 'daemonsets') return 'daemonsets';
@@ -1121,7 +1195,7 @@ function App() {
 
     const newDaemonSets = daemonSets.filter((_, i) => i !== index);
     setDaemonSets(newDaemonSets);
-    
+
     // Adjust selected daemonset index
     if (selectedDaemonSet >= index) {
       setSelectedDaemonSet(Math.max(0, selectedDaemonSet - 1));
@@ -1140,7 +1214,7 @@ function App() {
       labels: cleanAndMergeLabels(daemonSetToDuplicate.labels),
       nodeSelector: { ...daemonSetToDuplicate.nodeSelector }
     };
-    
+
     const newDaemonSets = [...daemonSets];
     newDaemonSets.splice(index + 1, 0, duplicatedDaemonSet);
     setDaemonSets(newDaemonSets);
@@ -1196,7 +1270,7 @@ function App() {
     <div className={`min-h-screen bg-gray-50 flex flex-col ${isDarkModeEnabled ? 'dark' : ''}`}>
       {/* SEO Head Component */}
       <SEOHead />
-      
+
       {/* Header */}
       <header className={`bg-white border-b border-gray-200 sticky top-0 z-50 dark:border-gray-700`}>
         <div className={`px-4 sm:px-6 lg:px-8 py-4 dark:bg-gray-900`}>
@@ -1217,7 +1291,7 @@ function App() {
                 <FileText className="w-5 h-5 text-white" />
               </div>
               <div className="flex flex-col">
-                <button 
+                <button
                   onClick={() => {
                     setShowAllResources(true);
                     setSidebarTab('deployments'); // Reset to default tab
@@ -1320,7 +1394,7 @@ function App() {
       <main className={`flex-1 flex min-h-0 overflow-hidden`} role="main">
         {/* Mobile Sidebar Overlay */}
         {sidebarOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
@@ -1348,14 +1422,14 @@ function App() {
                 {Object.keys(projectSettings.globalLabels).length} global label{Object.keys(projectSettings.globalLabels).length !== 1 ? 's' : ''} active
               </div>
             )}
-            
+
             {/* Debug buttons - remove in production */}
             <div className="mt-3">
               <div className="flex space-x-2">
-                <button 
-                  onClick={() => {
+                <button
+                  onClick={async () => {
                     console.log('Current state:', { deployments: deployments.length, daemonSets: daemonSets.length, jobs: jobs.length });
-                    const success = forceSave();
+                    const success = await forceSave();
                     if (success) {
                       alert('Configuration saved successfully!');
                     } else {
@@ -1370,7 +1444,7 @@ function App() {
                   </svg>
                   <span>Save</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setShowUploadModal(true);
                   }}
@@ -1382,7 +1456,7 @@ function App() {
                   </svg>
                   <span>Upload</span>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setShowClearModal(true);
                   }}
@@ -1423,71 +1497,61 @@ function App() {
               <div className="pl-6 space-y-1">
                 <button
                   onClick={() => handleMenuClick('deployments')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'deployments' 
-                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'deployments'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
+                    }`}
                 >
-                  <K8sDeploymentIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'deployments' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sDeploymentIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'deployments' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Deployments
                 </button>
 
                 <button
                   onClick={() => handleMenuClick('daemonsets')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'daemonsets' 
-                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 shadow-sm border border-indigo-100 dark:border-indigo-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 hover:text-indigo-600 dark:hover:text-indigo-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'daemonsets'
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 shadow-sm border border-indigo-100 dark:border-indigo-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 hover:text-indigo-600 dark:hover:text-indigo-300'
+                    }`}
                 >
-                  <K8sDaemonSetIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'daemonsets' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sDaemonSetIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'daemonsets' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   DaemonSets
                 </button>
 
                 <button
                   onClick={() => handleMenuClick('namespaces')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'namespaces' 
-                      ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'namespaces'
+                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
+                    }`}
                 >
-                  <K8sNamespaceIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'namespaces' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sNamespaceIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'namespaces' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Namespaces
                 </button>
 
                 <button
                   onClick={() => handleMenuClick('jobs', 'jobs')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'jobs' && jobsSubTab === 'jobs'
-                      ? 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-300 shadow-sm border border-pink-100 dark:border-pink-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-pink-50/50 dark:hover:bg-pink-900/10 hover:text-pink-600 dark:hover:text-pink-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs'
+                    ? 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-300 shadow-sm border border-pink-100 dark:border-pink-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-pink-50/50 dark:hover:bg-pink-900/10 hover:text-pink-600 dark:hover:text-pink-300'
+                    }`}
                 >
-                  <K8sJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'jobs' && jobsSubTab === 'jobs' ? 'text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs' ? 'text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Jobs
                 </button>
 
                 <button
                   onClick={() => handleMenuClick('jobs', 'cronjobs')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'jobs' && jobsSubTab === 'cronjobs'
-                      ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300 shadow-sm border border-yellow-100 dark:border-yellow-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs'
+                    ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300 shadow-sm border border-yellow-100 dark:border-yellow-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-300'
+                    }`}
                 >
-                  <K8sCronJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'jobs' && jobsSubTab === 'cronjobs' ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sCronJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs' ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   CronJobs
                 </button>
 
@@ -1518,28 +1582,24 @@ function App() {
               <div className="pl-6 space-y-1">
                 <button
                   onClick={() => handleMenuClick('storage', 'configmaps')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'storage' && storageSubTab === 'configmaps'
-                      ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300 shadow-sm border border-green-100 dark:border-green-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-green-50/50 dark:hover:bg-green-900/10 hover:text-green-600 dark:hover:text-green-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'configmaps'
+                    ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300 shadow-sm border border-green-100 dark:border-green-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-green-50/50 dark:hover:bg-green-900/10 hover:text-green-600 dark:hover:text-green-300'
+                    }`}
                 >
-                  <K8sConfigMapIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'storage' && storageSubTab === 'configmaps' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sConfigMapIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'configmaps' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   ConfigMaps
                 </button>
                 <button
                   onClick={() => handleMenuClick('storage', 'secrets')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'storage' && storageSubTab === 'secrets'
-                      ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300 shadow-sm border border-orange-100 dark:border-orange-800' 
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 hover:text-orange-600 dark:hover:text-orange-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'secrets'
+                    ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300 shadow-sm border border-orange-100 dark:border-orange-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 hover:text-orange-600 dark:hover:text-orange-300'
+                    }`}
                 >
-                  <K8sSecretIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'storage' && storageSubTab === 'secrets' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sSecretIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'secrets' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Secrets
                 </button>
 
@@ -1594,43 +1654,37 @@ function App() {
               <div className="pl-6 space-y-1">
                 <button
                   onClick={() => handleMenuClick('security', 'serviceaccounts')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'security' && securitySubTab === 'serviceaccounts'
-                      ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300 shadow-sm border border-cyan-100 dark:border-cyan-800'
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 hover:text-cyan-600 dark:hover:text-cyan-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts'
+                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300 shadow-sm border border-cyan-100 dark:border-cyan-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 hover:text-cyan-600 dark:hover:text-cyan-300'
+                    }`}
                 >
-                  <K8sServiceAccountIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'security' && securitySubTab === 'serviceaccounts' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sServiceAccountIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Service Accounts
                 </button>
                 {/* RBAC Roles */}
                 <button
                   onClick={() => handleMenuClick('security', 'roles')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'security' && securitySubTab === 'roles'
-                      ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'roles'
+                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
+                    }`}
                 >
-                  <K8sSecurityIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'security' && securitySubTab === 'roles' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <K8sSecurityIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'roles' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   Roles
                 </button>
                 {/* RoleBindings - enabled */}
                 <button
                   onClick={() => handleMenuClick('security', 'rolebindings')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                    sidebarTab === 'security' && securitySubTab === 'rolebindings'
-                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
-                  }`}
+                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'rolebindings'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
+                    }`}
                 >
-                  <Link2 className={`mr-3 flex-shrink-0 h-6 w-6 ${
-                    sidebarTab === 'security' && securitySubTab === 'rolebindings' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
-                  }`} />
+                  <Link2 className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'rolebindings' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                    }`} />
                   RoleBindings
                 </button>
 
@@ -2135,11 +2189,10 @@ function App() {
                         <button
                           key={mode.id}
                           onClick={() => setPreviewMode(mode.id)}
-                          className={`${
-                            previewMode === mode.id
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-100'
-                              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                          } px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium flex items-center space-x-1 transition-colors duration-200`}
+                          className={`${previewMode === mode.id
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-100'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                            } px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium flex items-center space-x-1 transition-colors duration-200`}
                         >
                           <Icon className="w-4 h-4" />
                           <span className="hidden sm:inline">{mode.label}</span>
@@ -2328,8 +2381,8 @@ function App() {
                 </svg>
                 Upload Configuration
               </h3>
-              <button 
-                onClick={() => setShowUploadModal(false)} 
+              <button
+                onClick={() => setShowUploadModal(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2402,8 +2455,8 @@ function App() {
                 </svg>
                 Clear Configuration
               </h3>
-              <button 
-                onClick={() => setShowClearModal(false)} 
+              <button
+                onClick={() => setShowClearModal(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2424,7 +2477,7 @@ function App() {
                 <p className="text-gray-600 dark:text-gray-300 mb-6">
                   This action will permanently remove all your deployments, daemonsets, jobs, configmaps, secrets, service accounts, roles, cluster roles, and namespaces. This action cannot be undone.
                 </p>
-                
+
                 {/* Configuration Summary */}
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-3">Current Configuration:</h5>
@@ -2519,7 +2572,7 @@ function App() {
                         setRoles([]);
                         setClusterRoles([]);
                         setRoleBindings([]);
-                        
+
                         console.log('Configuration cleared successfully');
                         alert('Configuration cleared successfully!');
                       } else {
@@ -2567,24 +2620,24 @@ function App() {
                 clusterRoles={clusterRoles}
                 initialRole={editingRoleIndex !== undefined ? (isClusterRoleMode ? clusterRoles[editingRoleIndex] : roles[editingRoleIndex]) : undefined}
                 isClusterRole={isClusterRoleMode}
-                onSubmit={editingRoleIndex !== undefined 
+                onSubmit={editingRoleIndex !== undefined
                   ? (role: KubernetesRole | KubernetesClusterRole) => {
-                      if (isClusterRoleMode) {
-                        handleUpdateClusterRole(role as KubernetesClusterRole, editingRoleIndex);
-                      } else {
-                        handleUpdateRole(role as KubernetesRole, editingRoleIndex);
-                      }
+                    if (isClusterRoleMode) {
+                      handleUpdateClusterRole(role as KubernetesClusterRole, editingRoleIndex);
+                    } else {
+                      handleUpdateRole(role as KubernetesRole, editingRoleIndex);
                     }
+                  }
                   : (role: KubernetesRole | KubernetesClusterRole) => {
-                      if (isClusterRoleMode) {
-                        handleAddClusterRole(role as KubernetesClusterRole);
-                      } else {
-                        handleAddRole(role as KubernetesRole);
-                      }
+                    if (isClusterRoleMode) {
+                      handleAddClusterRole(role as KubernetesClusterRole);
+                    } else {
+                      handleAddRole(role as KubernetesRole);
                     }
+                  }
                 }
-                onCancel={() => { 
-                  setShowRoleWizard(false); 
+                onCancel={() => {
+                  setShowRoleWizard(false);
                   setEditingRoleIndex(undefined);
                   if (reopenRoleBindingAfterRole) {
                     setShowRoleBindingManager(true);

@@ -12,11 +12,11 @@ export function Footer() {
             {/* Left: Copyright */}
             <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
               <p className="text-gray-400 text-sm">
-                © {currentYear} Kube Composer. All rights reserved.
+                © {currentYear} Kube Architect. All rights reserved.
               </p>
               <div className="flex items-center space-x-4">
                 <a
-                  href="https://github.com/same7ammar/kube-composer/blob/main/LICENSE"
+                  href="https://github.com/sabelosimelane/kube-architect/blob/main/LICENSE"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-gray-400 hover:text-white transition-colors duration-200 text-sm"
@@ -24,7 +24,7 @@ export function Footer() {
                   MIT License
                 </a>
                 <a
-                  href="https://github.com/same7ammar/kube-composer"
+                  href="https://github.com/sabelosimelane/kube-architect"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors duration-200 text-sm"
@@ -34,7 +34,7 @@ export function Footer() {
                 </a>
               </div>
             </div>
-            
+
             {/* Center: Made with love */}
             <div className="flex items-center justify-center space-x-2 text-gray-400 text-sm">
               <span>Made with</span>

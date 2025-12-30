@@ -89,7 +89,7 @@ Then open [http://localhost:8080](http://localhost:8080) in your browser.
 - ✅ **TLS Termination** - HTTPS and certificate management
 - ✅ **Ingress Rules** - Path-based and host-based routing
 
-## 🚀 Local Development
+## 🚀 Getting Started
 
 ### Prerequisites
 
@@ -109,13 +109,18 @@ cd kube-composer
 npm install
 ```
 
-3. **Start the development server:**
+3. **Start the application:**
 ```bash
 npm run dev
 ```
 
-4. **Open your browser:**
-Visit [http://localhost:5173](http://localhost:5173)
+This command starts both the **frontend** (React/Vite) and **backend** (Node.js/Express) development servers concurrently:
+- Frontend: [http://localhost:5173](http://localhost:5173)
+- Backend API: [http://localhost:3001](http://localhost:3001)
+
+### Data Persistence
+
+The application uses **SQLite** for data persistence. All project configurations, deployments, and settings are automatically saved to a local SQLite database (`kube-composer.db`). No additional database setup is required.
 
 ### Building for Production
 
@@ -144,28 +149,36 @@ npm run deploy
 ## 📁 Project Structure
 
 ```
-src/
-├── components/          # React components
-│   ├── ArchitecturePreview.tsx    # Visual architecture with traffic flow
-│   ├── DeploymentForm.tsx         # Multi-container deployment configuration
-│   ├── DeploymentsList.tsx        # Deployment management interface
-│   ├── NamespaceManager.tsx       # Namespace creation and management
-│   ├── ConfigMapManager.tsx       # ConfigMap creation and management
-│   ├── SecretManager.tsx          # Secret creation and management
-│   ├── YamlPreview.tsx           # Syntax-highlighted YAML output
-│   ├── ResourceSummary.tsx        # Resource overview and validation
-│   ├── Footer.tsx                 # Enhanced footer with resources
-│   ├── SocialShare.tsx            # Social media sharing
-│   └── SEOHead.tsx               # SEO optimization
-├── hooks/              # Custom React hooks
-│   └── useUsageCounter.ts        # Usage statistics tracking
-├── types/              # TypeScript definitions
-│   └── index.ts                  # Comprehensive type definitions
-├── utils/              # Utility functions
-│   └── yamlGenerator.ts          # Advanced YAML generation logic
-├── App.tsx             # Main application with tabbed interface
-├── main.tsx           # Entry point
-└── index.css          # Global styles with Tailwind CSS
+kube-composer/
+├── src/                    # Frontend (React + TypeScript)
+│   ├── components/         # React components
+│   │   ├── ArchitecturePreview.tsx    # Visual architecture with traffic flow
+│   │   ├── DeploymentForm.tsx         # Multi-container deployment configuration
+│   │   ├── DeploymentsList.tsx        # Deployment management interface
+│   │   ├── NamespaceManager.tsx       # Namespace creation and management
+│   │   ├── ConfigMapManager.tsx       # ConfigMap creation and management
+│   │   ├── SecretManager.tsx          # Secret creation and management
+│   │   ├── YamlPreview.tsx           # Syntax-highlighted YAML output
+│   │   ├── ResourceSummary.tsx        # Resource overview and validation
+│   │   ├── Footer.tsx                 # Enhanced footer with resources
+│   │   ├── SocialShare.tsx            # Social media sharing
+│   │   └── SEOHead.tsx               # SEO optimization
+│   ├── hooks/              # Custom React hooks
+│   │   └── useUsageCounter.ts        # Usage statistics tracking
+│   ├── types/              # TypeScript definitions
+│   │   └── index.ts                  # Comprehensive type definitions
+│   ├── utils/              # Utility functions
+│   │   └── yamlGenerator.ts          # Advanced YAML generation logic
+│   ├── App.tsx             # Main application with tabbed interface
+│   ├── main.tsx           # Entry point
+│   └── index.css          # Global styles with Tailwind CSS
+├── server/                 # Backend (Node.js + Express)
+│   ├── db.js              # SQLite database configuration
+│   ├── repositories/      # Data access layer
+│   │   └── ProjectRepository.js      # Project CRUD operations
+│   └── server.js          # Express API server
+├── kube-composer.db       # SQLite database (auto-created)
+└── package.json           # Dependencies and scripts
 ```
 
 ## 🔧 Configuration Examples

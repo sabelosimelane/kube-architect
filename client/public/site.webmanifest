@@ -1,6 +1,6 @@
 {
-  "name": "Kube Composer",
-  "short_name": "KubeComposer",
+  "name": "Kube Architect",
+  "short_name": "KubeArchitect",
   "description": "Free Kubernetes YAML Generator with Visual Editor",
   "icons": [
     {
@@ -9,7 +9,7 @@
       "type": "image/png"
     },
     {
-      "src": "/android-chrome-512x512.png", 
+      "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
@@ -20,7 +20,11 @@
   "orientation": "portrait-primary",
   "start_url": "/",
   "scope": "/",
-  "categories": ["developer", "productivity", "utilities"],
+  "categories": [
+    "developer",
+    "productivity",
+    "utilities"
+  ],
   "lang": "en-US",
   "dir": "ltr"
 }

@@ -38,6 +38,7 @@ interface VisualPreviewProps {
   roleBindings: RoleBinding[];
   containerRef?: React.RefObject<HTMLDivElement>;
   filterType?: 'all' | 'deployments' | 'daemonsets' | 'namespaces' | 'configmaps' | 'secrets' | 'serviceaccounts' | 'roles' | 'clusterroles' | 'rolebindings' | 'jobs' | 'cronjobs';
+  namespaceFilter?: string;
 }
 
 interface FlowNode {
@@ -83,7 +84,8 @@ export function VisualPreview({
   jobs,
   roleBindings,
   containerRef,
-  filterType = 'all'
+  filterType = 'all',
+  namespaceFilter
 }: VisualPreviewProps) {
   const showDetails = true;
   const [yamlModal, setYamlModal] = useState<{ open: boolean, title: string, yaml: string } | null>(null);
@@ -110,16 +112,30 @@ export function VisualPreview({
     let currentY = 0;
 
     // Filter resources based on filterType
-    const filteredDeployments = filterType === 'all' || filterType === 'deployments' ? deployments : [];
-    const filteredDaemonSets = filterType === 'all' || filterType === 'daemonsets' ? daemonSets : [];
-    const filteredNamespaces = filterType === 'all' || filterType === 'namespaces' ? namespaces : [];
-    const filteredConfigMaps = filterType === 'all' || filterType === 'configmaps' ? configMaps : [];
-    const filteredSecrets = filterType === 'all' || filterType === 'secrets' ? secrets : [];
-    const filteredServiceAccounts = filterType === 'all' || filterType === 'serviceaccounts' ? serviceAccounts : [];
-    const filteredRoles = filterType === 'all' || filterType === 'roles' ? roles : [];
-    const filteredClusterRoles = filterType === 'all' || filterType === 'clusterroles' ? clusterRoles : [];
-    const filteredJobs = filterType === 'all' || filterType === 'jobs' || filterType === 'cronjobs' ? jobs : [];
-    const filteredRoleBindings = filterType === 'all' || filterType === 'rolebindings' ? roleBindings : [];
+    let filteredDeployments = filterType === 'all' || filterType === 'deployments' ? deployments : [];
+    let filteredDaemonSets = filterType === 'all' || filterType === 'daemonsets' ? daemonSets : [];
+    let filteredNamespaces = filterType === 'all' || filterType === 'namespaces' ? namespaces : [];
+    let filteredConfigMaps = filterType === 'all' || filterType === 'configmaps' ? configMaps : [];
+    let filteredSecrets = filterType === 'all' || filterType === 'secrets' ? secrets : [];
+    let filteredServiceAccounts = filterType === 'all' || filterType === 'serviceaccounts' ? serviceAccounts : [];
+    let filteredRoles = filterType === 'all' || filterType === 'roles' ? roles : [];
+    let filteredClusterRoles = filterType === 'all' || filterType === 'clusterroles' ? clusterRoles : [];
+    let filteredJobs = filterType === 'all' || filterType === 'jobs' || filterType === 'cronjobs' ? jobs : [];
+    let filteredRoleBindings = filterType === 'all' || filterType === 'rolebindings' ? roleBindings : [];
+
+    // Apply namespace filter if provided
+    if (namespaceFilter) {
+      filteredDeployments = filteredDeployments.filter(d => d.namespace === namespaceFilter);
+      filteredDaemonSets = filteredDaemonSets.filter(d => d.namespace === namespaceFilter);
+      filteredNamespaces = filteredNamespaces.filter(ns => ns.name === namespaceFilter);
+      filteredConfigMaps = filteredConfigMaps.filter(cm => cm.namespace === namespaceFilter);
+      filteredSecrets = filteredSecrets.filter(s => s.namespace === namespaceFilter);
+      filteredServiceAccounts = filteredServiceAccounts.filter(sa => sa.namespace === namespaceFilter);
+      filteredRoles = filteredRoles.filter(r => r.metadata.namespace === namespaceFilter);
+      // ClusterRoles are cluster-scoped, so they don't get filtered by namespace
+      filteredJobs = filteredJobs.filter(j => j.namespace === namespaceFilter);
+      filteredRoleBindings = filteredRoleBindings.filter(rb => !rb.isClusterRoleBinding && rb.namespace === namespaceFilter);
+    }
 
     // Collect all implicit namespaces from resources
     const implicitNamespaceNames = new Set<string>();
@@ -1406,7 +1422,7 @@ export function VisualPreview({
     }
 
     return nodes;
-  }, [deployments, daemonSets, namespaces, configMaps, secrets, serviceAccounts, roles, clusterRoles, jobs, roleBindings, filterType]);
+  }, [deployments, daemonSets, namespaces, configMaps, secrets, serviceAccounts, roles, clusterRoles, jobs, roleBindings, filterType, namespaceFilter]);
 
   // Bounding box calculation
   const padding = 40;

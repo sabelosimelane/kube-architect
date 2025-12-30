@@ -5,6 +5,7 @@ import type { DaemonSetConfig } from '../types';
 interface DaemonSetsListProps {
   daemonSets: DaemonSetConfig[];
   selectedDaemonSet: number;
+  namespaceFilter?: string | null;
   onSelectDaemonSet: (index: number) => void;
   onEditDaemonSet: (index: number) => void;
   onDuplicateDaemonSet: (index: number) => void;
@@ -14,12 +15,21 @@ interface DaemonSetsListProps {
 export function DaemonSetsList({
   daemonSets,
   selectedDaemonSet,
+  namespaceFilter,
   onSelectDaemonSet,
   onEditDaemonSet,
   onDuplicateDaemonSet,
   onDeleteDaemonSet
 }: DaemonSetsListProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  const filteredDaemonSets = namespaceFilter
+    ? daemonSets.filter(ds => ds.namespace === namespaceFilter)
+    : daemonSets;
+
+  const getOriginalIndex = (daemonSet: DaemonSetConfig) => {
+    return daemonSets.indexOf(daemonSet);
+  };
 
   const handleDeleteClick = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,6 +65,14 @@ export function DaemonSetsList({
     };
   };
 
+  if (filteredDaemonSets.length === 0 && namespaceFilter) {
+    return (
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+        <p>No DaemonSets found in namespace "{namespaceFilter}"</p>
+      </div>
+    );
+  }
+
   if (daemonSets.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -71,23 +89,22 @@ export function DaemonSetsList({
 
   return (
     <div className="space-y-1 p-4">
-      {daemonSets.map((daemonSet, index) => {
+      {filteredDaemonSets.map((daemonSet) => {
+        const index = getOriginalIndex(daemonSet);
         const summary = getDaemonSetSummary(daemonSet);
         return (
           <button
             key={index}
-            className={`p-3 rounded-lg w-full text-left border cursor-pointer transition-all duration-200 ${
-              selectedDaemonSet === index
+            className={`p-3 rounded-lg w-full text-left border cursor-pointer transition-all duration-200 ${selectedDaemonSet === index
                 ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200 dark:bg-blue-900 dark:border-blue-800 dark:ring-blue-800'
                 : 'bg-white border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700'
-            }`}
+              }`}
             onClick={() => onSelectDaemonSet(index)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3 min-w-0 flex-1">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  daemonSet.appName ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-300'
-                }`} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${daemonSet.appName ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-300'
+                  }`} />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-gray-900 truncate dark:text-gray-100">
                     {daemonSet.appName || `DaemonSet ${index + 1}`}

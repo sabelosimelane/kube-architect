@@ -2134,7 +2134,7 @@ function App() {
         {/* Right Content - Preview */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Preview Content with Sticky Header */}
-          <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+          <div className="flex-1 min-h-0 overflow-auto bg-gray-50 dark:bg-gray-900">
             <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4 dark:bg-gray-900 dark:border-gray-700">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0 ">
                 <div className="flex items-center w-full">

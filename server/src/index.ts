@@ -35,10 +35,8 @@ app.get('/api/db-status', (req, res) => {
 // Export app for testing
 export { app };
 
-// Start server if run directly
-if (require.main === module) {
-    app.listen(port, () => {
-        console.log(`Server running at http://localhost:${port}`);
-        console.log(`Database connected: ${process.env.DATABASE_URL || './dev.sqlite'}`);
-    });
-}
+// Start server
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+    console.log(`Database connected: ${process.env.DATABASE_URL || './dev.sqlite'}`);
+});

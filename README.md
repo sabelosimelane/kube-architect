@@ -13,7 +13,7 @@ Generate your first Kubernetes deployment in under 2 minutes!
 Run Kube Composer locally in seconds:
 
 ```bash
-docker pull same7ammar/kube-composer && docker run -d -p 8080:80 same7ammar/kube-composer
+docker pull sabelosimelane/kube-architect && docker run -d -p 8080:80 sabelosimelane/kube-architect
 ```
 
 Then open [http://localhost:8080](http://localhost:8080) in your browser.
@@ -100,7 +100,7 @@ Then open [http://localhost:8080](http://localhost:8080) in your browser.
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/same7ammar/kube-composer.git
+git clone https://github.com/sabelosimelane/kube-architect.git
 cd kube-composer
 ```
 
@@ -305,12 +305,12 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 If this project helped you, please consider giving it a ⭐ on GitHub!
 
-[![Star History Chart](https://api.star-history.com/svg?repos=same7ammar/kube-composer&type=Date)](https://star-history.com/#same7ammar/kube-composer&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=sabelosimelane/kube-architect&type=Date)](https://star-history.com/#sabelosimelane/kube-architect&Date)
 
 ## 📞 Support & Community
 
-- **🐛 Bug Reports:** [GitHub Issues](https://github.com/same7ammar/kube-composer/issues)
-- **💡 Feature Requests:** [GitHub Discussions](https://github.com/same7ammar/kube-composer/discussions)
+- **🐛 Bug Reports:** [GitHub Issues](https://github.com/sabelosimelane/kube-architect/issues)
+- **💡 Feature Requests:** [GitHub Discussions](https://github.com/sabelosimelane/kube-architect/discussions)
 - **📧 Contact:** Open an issue for any questions
 - **🐦 Twitter:** [@Same7Ammar](https://x.com/Same7Ammar)
 - **💼 LinkedIn:** [Same Hammar](https://www.linkedin.com/in/samehammar/)
@@ -321,7 +321,7 @@ If this project helped you, please consider giving it a ⭐ on GitHub!
 
 **Made with ❤️ for the Kubernetes community**
 
-[🌐 Website](https://kube-composer.com) • [📚 Documentation](https://github.com/same7ammar/kube-composer) • [🐛 Report Bug](https://github.com/same7ammar/kube-composer/issues) • [💡 Request Feature](https://github.com/same7ammar/kube-composer/discussions)
+[🌐 Website](https://kube-composer.com) • [📚 Documentation](https://github.com/sabelosimelane/kube-architect) • [🐛 Report Bug](https://github.com/sabelosimelane/kube-architect/issues) • [💡 Request Feature](https://github.com/sabelosimelane/kube-architect/discussions)
 
 **⭐ Star us on GitHub — it helps!**
 

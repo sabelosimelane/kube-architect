@@ -1,23 +1,47 @@
 import { useState } from 'react';
-import { Copy, Check, Download, Eye, EyeOff } from 'lucide-react';
+import { Copy, Check, Download, Eye, EyeOff, X } from 'lucide-react';
 
 interface YamlPreviewProps {
   yaml: string;
   name?: string;
+  onClose?: () => void;
 }
 
-export function YamlPreview({ yaml, name }: YamlPreviewProps) {
+export function YamlPreview({ yaml, name, onClose }: YamlPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [wordWrap, setWordWrap] = useState(false);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(yaml);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(yaml);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement("textarea");
+        textArea.value = yaml;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          document.execCommand('copy');
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+          console.error('Fallback: Oops, unable to copy', err);
+          alert('Failed to copy to clipboard');
+        }
+
+        document.body.removeChild(textArea);
+      }
     } catch (err) {
       console.error('Failed to copy text: ', err);
+      alert('Failed to copy to clipboard');
     }
   };
 
@@ -80,7 +104,7 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
       parts.push(<span key={`${lineIndex}-key-${partIndex++}`} className="text-blue-400 font-medium">{keyMatch[1]}</span>);
       parts.push(<span key={`${lineIndex}-colon-${partIndex++}`}>:</span>);
       remainingLine = remainingLine.slice(keyMatch[0].length);
-      
+
       if (keyMatch[2]) {
         parts.push(<span key={`${lineIndex}-keyspace-${partIndex++}`}>{keyMatch[2]}</span>);
       }
@@ -96,7 +120,7 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
           return '';
         }
       );
-      
+
       remainingLine = remainingLine.replace(
         /'([^']*)'/g,
         (_, content) => {
@@ -160,28 +184,26 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           Generated YAML{name ? ` for ${name}` : ''}
         </h3>
-        
+
         <div className="flex items-center space-x-2">
           {/* View options */}
           <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setShowLineNumbers(!showLineNumbers)}
-              className={`p-1.5 rounded text-xs font-medium transition-colors duration-200 ${
-                showLineNumbers 
-                  ? 'bg-white text-gray-700 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`p-1.5 rounded text-xs font-medium transition-colors duration-200 ${showLineNumbers
+                ? 'bg-white text-gray-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
               title="Toggle line numbers"
             >
               {showLineNumbers ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
             </button>
             <button
               onClick={() => setWordWrap(!wordWrap)}
-              className={`px-2 py-1.5 rounded text-xs font-medium transition-colors duration-200 ${
-                wordWrap 
-                  ? 'bg-white text-gray-700 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-2 py-1.5 rounded text-xs font-medium transition-colors duration-200 ${wordWrap
+                ? 'bg-white text-gray-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
               title="Toggle word wrap"
             >
               Wrap
@@ -198,7 +220,7 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
             <Download className="w-3 h-3 mr-1" />
             <span className="hidden sm:inline">Download</span>
           </button>
-          
+
           <button
             onClick={handleCopy}
             aria-label="Copy YAML to clipboard"
@@ -218,7 +240,18 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
             )}
           </button>
         </div>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="ml-2 p-1.5 text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 flex items-center justify-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
+
 
       {/* YAML content */}
       <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-700 shadow-lg dark:bg-gray-800 dark:border-gray-700" aria-label="YAML preview">
@@ -239,7 +272,7 @@ export function YamlPreview({ yaml, name }: YamlPreviewProps) {
               {yamlLines.map((line, index) => (
                 <div key={index} className="flex">
                   {showLineNumbers && (
-                    <span 
+                    <span
                       className="text-gray-500 text-right mr-4 select-none flex-shrink-0 font-mono text-xs"
                       style={{ minWidth: `${lineNumberWidth + 1}ch` }}
                     >

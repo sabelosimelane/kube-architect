@@ -11,10 +11,10 @@ interface SecretManagerProps {
   editingIndex?: number;
 }
 
-export function SecretManager({ 
+export function SecretManager({
   secrets,
   namespaces,
-  onAddSecret, 
+  onAddSecret,
   onUpdateSecret,
   onClose,
   editingIndex
@@ -30,7 +30,7 @@ export function SecretManager({
   const [newLabel, setNewLabel] = useState({ key: '', value: '' });
   const [newDataEntry, setNewDataEntry] = useState({ key: '', value: '' });
   const [errors, setErrors] = useState<string[]>([]);
-  
+
   // Docker Hub specific state
   const [dockerHubFields, setDockerHubFields] = useState({
     dockerServer: 'https://index.docker.io/v1/',
@@ -95,35 +95,35 @@ export function SecretManager({
 
   const validateSecretName = (name: string): string[] => {
     const errors: string[] = [];
-    
+
     if (!name) {
       errors.push('Secret name is required');
       return errors;
     }
-    
+
     if (name.length > 253) {
       errors.push('Name must be 253 characters or less');
     }
-    
+
     if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/.test(name)) {
       errors.push('Use only lowercase letters, numbers, dots, and hyphens');
     }
-    
+
     if (name.startsWith('-') || name.endsWith('-') || name.startsWith('.') || name.endsWith('.')) {
       errors.push('Cannot start or end with hyphen or dot');
     }
-    
+
     // Check for duplicate names only when creating new secret
     if (!isEditing && secrets.some(s => s.name === name)) {
       errors.push('Secret already exists');
     }
-    
+
     return errors;
   };
 
   const validateForm = (): string[] => {
     const errors: string[] = [];
-    
+
     // Validate secret name
     if (!newSecret.name.trim()) {
       errors.push('Secret name is required');
@@ -131,11 +131,11 @@ export function SecretManager({
       const nameErrors = validateSecretName(newSecret.name);
       errors.push(...nameErrors);
     }
-    
+
     if (newSecret.type === 'kubernetes.io/dockerconfigjson') {
       // Docker Hub specific validation
       if (!dockerHubFields.dockerServer.trim()) {
-        errors.push('Docker Server is required');
+        errors.push('Registry URI is required');
       }
       if (!dockerHubFields.username.trim()) {
         errors.push('Username is required');
@@ -157,7 +157,7 @@ export function SecretManager({
           errors.push('TLS Certificate must be in PEM format');
         }
       }
-      
+
       if (!tlsFields.tlsKey.trim()) {
         errors.push('TLS Private Key is required');
       } else {
@@ -173,7 +173,7 @@ export function SecretManager({
         errors.push('At least one data entry is required');
       }
     }
-    
+
     return errors;
   };
 
@@ -246,7 +246,7 @@ export function SecretManager({
           }
         }
       };
-      
+
       secret = {
         ...newSecret,
         data: {
@@ -259,33 +259,33 @@ export function SecretManager({
       // Clean and normalize the certificate and private key data
       let cleanCert = tlsFields.tlsCert.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       let cleanKey = tlsFields.tlsKey.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      
+
       // Remove any extra whitespace and ensure proper line breaks
       cleanCert = cleanCert.replace(/\n\s*\n/g, '\n').replace(/^\s+|\s+$/gm, '');
       cleanKey = cleanKey.replace(/\n\s*\n/g, '\n').replace(/^\s+|\s+$/gm, '');
-      
+
       // Ensure proper PEM format with correct headers and footers
       if (!cleanCert.includes('-----BEGIN CERTIFICATE-----')) {
         cleanCert = `-----BEGIN CERTIFICATE-----\n${cleanCert}\n-----END CERTIFICATE-----`;
       }
-      
+
       // Handle different private key formats
-      if (!cleanKey.includes('-----BEGIN PRIVATE KEY-----') && 
-          !cleanKey.includes('-----BEGIN RSA PRIVATE KEY-----') &&
-          !cleanKey.includes('-----BEGIN EC PRIVATE KEY-----')) {
+      if (!cleanKey.includes('-----BEGIN PRIVATE KEY-----') &&
+        !cleanKey.includes('-----BEGIN RSA PRIVATE KEY-----') &&
+        !cleanKey.includes('-----BEGIN EC PRIVATE KEY-----')) {
         cleanKey = `-----BEGIN PRIVATE KEY-----\n${cleanKey}\n-----END PRIVATE KEY-----`;
       }
-      
+
       // Validate certificate format (basic check)
       if (!cleanCert.match(/-----BEGIN CERTIFICATE-----\n[\s\S]*\n-----END CERTIFICATE-----/)) {
         throw new Error('Invalid certificate format. Please ensure the certificate is in PEM format.');
       }
-      
+
       // Validate private key format (basic check)
       if (!cleanKey.match(/-----BEGIN (PRIVATE KEY|RSA PRIVATE KEY|EC PRIVATE KEY)-----\n[\s\S]*\n-----END (PRIVATE KEY|RSA PRIVATE KEY|EC PRIVATE KEY)-----/)) {
         throw new Error('Invalid private key format. Please ensure the private key is in PEM format.');
       }
-      
+
       secret = {
         ...newSecret,
         data: {
@@ -300,7 +300,7 @@ export function SecretManager({
         setErrors(['At least one data entry is required']);
         return;
       }
-      
+
       secret = {
         ...newSecret,
         createdAt: isEditing ? secrets[editingIndex!].createdAt : new Date().toISOString()
@@ -312,15 +312,15 @@ export function SecretManager({
     } else {
       onAddSecret(secret);
     }
-    
+
     // Reset form
-    setNewSecret({ 
-      name: '', 
-      namespace: 'default', 
+    setNewSecret({
+      name: '',
+      namespace: 'default',
       type: 'Opaque',
-      labels: {}, 
-      annotations: {}, 
-      data: {} 
+      labels: {},
+      annotations: {},
+      data: {}
     });
     setDockerHubFields({
       dockerServer: 'https://index.docker.io/v1/',
@@ -386,7 +386,7 @@ export function SecretManager({
               <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {isEditing ? 'Edit Secret' : 'Create New Secret'}
               </h4>
-              
+
               {/* Validation Errors Summary */}
               {errors.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2 dark:bg-red-700 dark:border-red-800 dark:text-red-100">
@@ -415,9 +415,8 @@ export function SecretManager({
                     value={newSecret.name}
                     onChange={(e) => handleSecretNameChange(e.target.value)}
                     onKeyPress={(e) => handleKeyPress(e, handleCreateSecret)}
-                    className={`w-full px-3 py-2 border-2 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${
-                      errors.length > 0 ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
-                    }`}
+                    className={`w-full px-3 py-2 border-2 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${errors.length > 0 ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+                      }`}
                     placeholder="my-secret"
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-3">
@@ -485,13 +484,13 @@ export function SecretManager({
                 </div>
               </div>
 
-                            {/* Conditional Form Fields */}
+              {/* Conditional Form Fields */}
               {newSecret.type === 'kubernetes.io/dockerconfigjson' ? (
                 <>
                   {/* Docker Server */}
                   <div className="space-y-1">
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Docker Server *
+                      Registry URI *
                     </label>
                     <div className="relative">
                       <input
@@ -700,7 +699,7 @@ export function SecretManager({
                         </div>
                       </div>
                     </div>
-                    
+
                     {Object.entries(newSecret.data).length > 0 && (
                       <div className="space-y-1 max-h-24 overflow-y-auto">
                         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Added Data:</h4>
@@ -771,7 +770,7 @@ export function SecretManager({
                     </div>
                   </div>
                 </div>
-                
+
                 {Object.entries(newSecret.labels).length > 0 && (
                   <div className="space-y-1">
                     <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Added Labels:</h4>
@@ -797,8 +796,8 @@ export function SecretManager({
               <button
                 onClick={handleCreateSecret}
                 disabled={!newSecret.name.trim() || (
-                  newSecret.type !== 'kubernetes.io/dockerconfigjson' && 
-                  newSecret.type !== 'kubernetes.io/tls' && 
+                  newSecret.type !== 'kubernetes.io/dockerconfigjson' &&
+                  newSecret.type !== 'kubernetes.io/tls' &&
                   Object.keys(newSecret.data).length === 0
                 )}
                 className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 font-medium shadow-sm hover:shadow-md transition-all duration-200"

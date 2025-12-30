@@ -1,23 +1,22 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  CheckCircle, 
-  XCircle, 
-  AlertTriangle, 
-  Clock, 
-  RotateCcw, 
-  Server, 
-  Database, 
-  Settings, 
-  Key, 
-  Globe, 
-  Network, 
+import {
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Clock,
+  RotateCcw,
+  Server,
+  Database,
+  Settings,
+  Key,
+  Globe,
+  Network,
   HardDrive,
   Users,
   Info,
   ExternalLink,
   GitBranch,
   GitCommit,
-  X,
   Play,
   Link2
 } from 'lucide-react';
@@ -72,12 +71,12 @@ interface FlowNode {
   colorClass?: string;
 }
 
-export function VisualPreview({ 
-  deployments, 
+export function VisualPreview({
+  deployments,
   daemonSets,
-  namespaces, 
-  configMaps, 
-  secrets, 
+  namespaces,
+  configMaps,
+  secrets,
   serviceAccounts,
   roles,
   clusterRoles,
@@ -122,8 +121,34 @@ export function VisualPreview({
     const filteredJobs = filterType === 'all' || filterType === 'jobs' || filterType === 'cronjobs' ? jobs : [];
     const filteredRoleBindings = filterType === 'all' || filterType === 'rolebindings' ? roleBindings : [];
 
+    // Collect all implicit namespaces from resources
+    const implicitNamespaceNames = new Set<string>();
+    const addNs = (ns?: string) => { if (ns) implicitNamespaceNames.add(ns); };
+
+    filteredDeployments.forEach(r => addNs(r.namespace));
+    filteredDaemonSets.forEach(r => addNs(r.namespace));
+    filteredConfigMaps.forEach(r => addNs(r.namespace));
+    filteredSecrets.forEach(r => addNs(r.namespace));
+    filteredServiceAccounts.forEach(r => addNs(r.namespace));
+    filteredRoles.forEach(r => addNs(r.metadata.namespace));
+    filteredJobs.forEach(r => addNs(r.namespace));
+    filteredRoleBindings.forEach(r => !r.isClusterRoleBinding && addNs(r.namespace));
+
+    // Create complete list of namespaces (explicit + implicit)
+    const effectiveNamespaces = [...filteredNamespaces];
+    implicitNamespaceNames.forEach(nsName => {
+      if (!effectiveNamespaces.some(ns => ns.name === nsName)) {
+        effectiveNamespaces.push({
+          name: nsName,
+          labels: {},
+          annotations: {},
+          createdAt: new Date().toISOString()
+        });
+      }
+    });
+
     // Group by namespace
-    const namespaceGroups = filteredNamespaces.map(ns => ({
+    const namespaceGroups = effectiveNamespaces.map(ns => ({
       namespace: ns,
       deployments: filteredDeployments.filter(d => d.namespace === ns.name && d.appName),
       daemonSets: filteredDaemonSets.filter(d => d.namespace === ns.name && d.appName),
@@ -132,10 +157,10 @@ export function VisualPreview({
       serviceAccounts: filteredServiceAccounts.filter(sa => sa.namespace === ns.name),
       roles: filteredRoles.filter(r => r.metadata.namespace === ns.name),
       roleBindings: filteredRoleBindings.filter(rb => !rb.isClusterRoleBinding && rb.namespace === ns.name)
-    })).filter(group => 
-      group.deployments.length > 0 || 
+    })).filter(group =>
+      group.deployments.length > 0 ||
       group.daemonSets.length > 0 ||
-      group.configMaps.length > 0 || 
+      group.configMaps.length > 0 ||
       group.secrets.length > 0 ||
       group.serviceAccounts.length > 0 ||
       group.roles.length > 0 ||
@@ -378,22 +403,22 @@ export function VisualPreview({
       if (group.serviceAccounts.length > 0) {
         const baseY = currentY;
         const colorClass = colorPalette[0]; // Use consistent color for service accounts
-        
+
         // Create a much better spaced grid layout for service accounts
         const serviceAccountsPerRow = 2; // Keep 2 per row for better spacing
-        const serviceAccountSpacing = 500; // Much more spacing between service accounts
-        
+        const serviceAccountSpacing = 300; // Reduced spacing between service accounts
+
         group.serviceAccounts.forEach((serviceAccount, saIndex) => {
           const row = Math.floor(saIndex / serviceAccountsPerRow);
           const col = saIndex % serviceAccountsPerRow;
           const serviceAccountId = `serviceaccount-${serviceAccount.name}`;
-          
+
           // Calculate service account status
           const hasName = serviceAccount.name && serviceAccount.name.trim() !== '';
           const hasNamespace = serviceAccount.namespace && serviceAccount.namespace.trim() !== '';
           let serviceAccountStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasNamespace) {
             serviceAccountStatus = 'healthy';
             syncStatus = 'synced';
@@ -406,8 +431,8 @@ export function VisualPreview({
           }
 
           // Calculate the row base Y position with much better spacing
-          const rowBaseY = baseY + (row * 250); // Much more vertical spacing between rows
-          
+          const rowBaseY = baseY + (row * 180); // Reduced vertical spacing between rows
+
           // Add service account node in improved grid
           nodes.push({
             id: serviceAccountId,
@@ -416,8 +441,8 @@ export function VisualPreview({
             namespace: serviceAccount.namespace,
             status: serviceAccountStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * serviceAccountSpacing, 
+            position: {
+              x: col * serviceAccountSpacing,
               y: rowBaseY
             },
             dependencies: [],
@@ -442,9 +467,9 @@ export function VisualPreview({
                 namespace: secret.namespace,
                 status: 'healthy',
                 syncStatus: 'synced',
-                position: { 
-                  x: col * serviceAccountSpacing - 180, // Much better horizontal offset
-                  y: rowBaseY + 120 + (secIndex * 80) // Position much further below with better vertical spacing
+                position: {
+                  x: col * serviceAccountSpacing + 20, // Adjusted horizontal offset
+                  y: rowBaseY + 80 + (secIndex * 60) // Position below with better vertical spacing
                 },
                 dependencies: [serviceAccountId],
                 children: [],
@@ -467,9 +492,9 @@ export function VisualPreview({
                 namespace: secret.namespace,
                 status: 'healthy',
                 syncStatus: 'synced',
-                position: { 
-                  x: col * serviceAccountSpacing + 180, // Much better horizontal offset
-                  y: rowBaseY + 120 + (ipsIndex * 80) // Position much further below with better vertical spacing
+                position: {
+                  x: col * serviceAccountSpacing + 220, // Adjusted horizontal offset
+                  y: rowBaseY + 80 + (ipsIndex * 60) // Position below with better vertical spacing
                 },
                 dependencies: [serviceAccountId],
                 children: [],
@@ -489,29 +514,29 @@ export function VisualPreview({
           0
         );
         // Add extra space for secrets positioned below service accounts
-        const extraSpaceForSecrets = maxSecretsPerServiceAccount > 0 ? maxSecretsPerServiceAccount * 80 + 80 : 0;
-        currentY += totalRows * 250 + extraSpaceForSecrets + 100; // Much improved spacing calculation
+        const extraSpaceForSecrets = maxSecretsPerServiceAccount > 0 ? maxSecretsPerServiceAccount * 60 + 60 : 0;
+        currentY += totalRows * 180 + extraSpaceForSecrets + 60; // Improved spacing calculation
       }
 
       // Process roles
       if (group.roles.length > 0) {
         const rolesPerRow = 2;
         const roleSpacing = 280;
-        
+
         group.roles.forEach((role, roleIndex) => {
           const row = Math.floor(roleIndex / rolesPerRow);
           const col = roleIndex % rolesPerRow;
           const roleId = `role-${role.metadata.name}`;
-          
+
           // Calculate role status
           const hasName = role.metadata.name && role.metadata.name.trim() !== '';
           const hasRules = role.rules && role.rules.length > 0;
-          const hasValidRules = hasRules && role.rules.every(r => 
+          const hasValidRules = hasRules && role.rules.every(r =>
             r.resources && r.resources.length > 0 && r.verbs && r.verbs.length > 0
           );
           let roleStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasValidRules) {
             roleStatus = 'healthy';
             syncStatus = 'synced';
@@ -536,8 +561,8 @@ export function VisualPreview({
             namespace: role.metadata.namespace,
             status: roleStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * roleSpacing, 
+            position: {
+              x: col * roleSpacing,
               y: currentY + (row * 180) // Increased spacing for role details
             },
             dependencies: [],
@@ -563,12 +588,12 @@ export function VisualPreview({
       if (group.roleBindings.length > 0) {
         const roleBindingsPerRow = 2;
         const roleBindingSpacing = 260;
-        
+
         group.roleBindings.forEach((rb, rbIndex) => {
           const row = Math.floor(rbIndex / roleBindingsPerRow);
           const col = rbIndex % roleBindingsPerRow;
           const rbId = `rolebinding-${rb.name}-${rb.namespace}`;
-          
+
           nodes.push({
             id: rbId,
             name: rb.name,
@@ -589,7 +614,7 @@ export function VisualPreview({
             colorClass: colorPalette[3] // Purple for RoleBinding
           });
         });
-        
+
         const totalRBRows = Math.ceil(group.roleBindings.length / roleBindingsPerRow);
         currentY += totalRBRows * 120 + 20;
       }
@@ -618,30 +643,30 @@ export function VisualPreview({
 
       // Process jobs and cronjobs
       const namespaceJobs = filteredJobs.filter(job => job.namespace === group.namespace.name);
-      
+
       // Apply specific job/cronjob filtering
-      const filteredNamespaceJobs = filterType === 'jobs' 
+      const filteredNamespaceJobs = filterType === 'jobs'
         ? namespaceJobs.filter(job => job.type === 'job')
         : filterType === 'cronjobs'
-        ? namespaceJobs.filter(job => job.type === 'cronjob')
-        : namespaceJobs;
-      
+          ? namespaceJobs.filter(job => job.type === 'cronjob')
+          : namespaceJobs;
+
       if (filteredNamespaceJobs.length > 0) {
         const jobsPerRow = 2;
         const jobSpacing = 250;
-        
+
         filteredNamespaceJobs.forEach((job, jobIndex) => {
           const row = Math.floor(jobIndex / jobsPerRow);
           const col = jobIndex % jobsPerRow;
           const jobId = `${job.type}-${job.name}`;
-          
+
           // Calculate job status
           const hasName = job.name && job.name.trim() !== '';
           const hasNamespace = job.namespace && job.namespace.trim() !== '';
           const hasContainers = job.containers && job.containers.length > 0;
           let jobStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasNamespace && hasContainers) {
             jobStatus = 'healthy';
             syncStatus = 'synced';
@@ -661,8 +686,8 @@ export function VisualPreview({
             namespace: job.namespace,
             status: jobStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * jobSpacing, 
+            position: {
+              x: col * jobSpacing,
               y: currentY + (row * 100) // Compact job spacing
             },
             dependencies: [],
@@ -731,14 +756,14 @@ export function VisualPreview({
           const colorClass = colorPalette[colorIdx];
           const deploymentId = `deployment-${deployment.appName}`;
           const serviceId = `service-${deployment.appName}`;
-          
+
           // Calculate deployment status
           const hasContainers = deployment.containers && deployment.containers.length > 0;
           const hasValidContainers = hasContainers && deployment.containers.every(c => c.name && c.image);
           const hasProperPorts = deployment.port > 0 && deployment.targetPort > 0;
           let deploymentStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasValidContainers && hasProperPorts) {
             deploymentStatus = 'healthy';
             syncStatus = 'synced';
@@ -849,13 +874,13 @@ export function VisualPreview({
           const colorClass = colorPalette[colorIdx];
           const daemonSetId = `daemonset-${daemonSet.appName}`;
           const serviceId = `service-${daemonSet.appName}`;
-          
+
           // Calculate daemonSet status
           const hasContainers = daemonSet.containers && daemonSet.containers.length > 0;
           const hasValidContainers = hasContainers && daemonSet.containers.every(c => c.name && c.image);
           let daemonSetStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasValidContainers) {
             daemonSetStatus = 'healthy';
             syncStatus = 'synced';
@@ -931,11 +956,11 @@ export function VisualPreview({
       if (filterType === 'configmaps') {
         const configMapsPerRow = 3;
         const configMapSpacing = 250;
-        
+
         filteredConfigMaps.forEach((configMap, index) => {
           const row = Math.floor(index / configMapsPerRow);
           const col = index % configMapsPerRow;
-          
+
           nodes.push({
             id: `configmap-${configMap.name}`,
             name: configMap.name,
@@ -943,8 +968,8 @@ export function VisualPreview({
             namespace: configMap.namespace,
             status: 'healthy',
             syncStatus: 'synced',
-            position: { 
-              x: col * configMapSpacing, 
+            position: {
+              x: col * configMapSpacing,
               y: currentY + (row * 120) // Compact spacing
             },
             dependencies: [],
@@ -955,7 +980,7 @@ export function VisualPreview({
             colorClass: colorPalette[0]
           });
         });
-        
+
         // Update currentY based on the number of rows needed
         const totalRows = Math.ceil(filteredConfigMaps.length / configMapsPerRow);
         currentY += totalRows * 120 + 40; // Compact spacing
@@ -965,11 +990,11 @@ export function VisualPreview({
       if (filterType === 'secrets') {
         const secretsPerRow = 3;
         const secretSpacing = 250;
-        
+
         filteredSecrets.forEach((secret, index) => {
           const row = Math.floor(index / secretsPerRow);
           const col = index % secretsPerRow;
-          
+
           nodes.push({
             id: `secret-${secret.name}`,
             name: secret.name,
@@ -977,8 +1002,8 @@ export function VisualPreview({
             namespace: secret.namespace,
             status: 'healthy',
             syncStatus: 'synced',
-            position: { 
-              x: col * secretSpacing, 
+            position: {
+              x: col * secretSpacing,
               y: currentY + (row * 120) // Compact spacing
             },
             dependencies: [],
@@ -989,7 +1014,7 @@ export function VisualPreview({
             colorClass: colorPalette[1]
           });
         });
-        
+
         // Update currentY based on the number of rows needed
         const totalRows = Math.ceil(filteredSecrets.length / secretsPerRow);
         currentY += totalRows * 120 + 40; // Compact spacing
@@ -998,13 +1023,13 @@ export function VisualPreview({
       // Add standalone service accounts in much improved grid layout
       if (filterType === 'serviceaccounts') {
         const serviceAccountsPerRow = 2; // Keep 2 per row for better spacing
-        const serviceAccountSpacing = 500; // Much more spacing between service accounts
-        
+        const serviceAccountSpacing = 300; // Reduced spacing between service accounts
+
         filteredServiceAccounts.forEach((serviceAccount, index) => {
           const row = Math.floor(index / serviceAccountsPerRow);
           const col = index % serviceAccountsPerRow;
-          const rowBaseY = currentY + (row * 250); // Much better vertical spacing
-          
+          const rowBaseY = currentY + (row * 180); // Reduced vertical spacing
+
           // Add service account node
           nodes.push({
             id: `serviceaccount-${serviceAccount.name}`,
@@ -1013,8 +1038,8 @@ export function VisualPreview({
             namespace: serviceAccount.namespace,
             status: 'healthy',
             syncStatus: 'synced',
-            position: { 
-              x: col * serviceAccountSpacing, 
+            position: {
+              x: col * serviceAccountSpacing,
               y: rowBaseY
             },
             dependencies: [],
@@ -1037,9 +1062,9 @@ export function VisualPreview({
                 namespace: secret.namespace,
                 status: 'healthy',
                 syncStatus: 'synced',
-                position: { 
-                  x: col * serviceAccountSpacing - 180, // Much better horizontal offset
-                  y: rowBaseY + 120 + (secIndex * 80) // Position much further below with better vertical spacing
+                position: {
+                  x: col * serviceAccountSpacing + 20, // Adjusted horizontal offset
+                  y: rowBaseY + 80 + (secIndex * 60) // Position below with better vertical spacing
                 },
                 dependencies: [`serviceaccount-${serviceAccount.name}`],
                 children: [],
@@ -1062,9 +1087,9 @@ export function VisualPreview({
                 namespace: secret.namespace,
                 status: 'healthy',
                 syncStatus: 'synced',
-                position: { 
-                  x: col * serviceAccountSpacing + 180, // Much better horizontal offset
-                  y: rowBaseY + 120 + (ipsIndex * 80) // Position much further below with better vertical spacing
+                position: {
+                  x: col * serviceAccountSpacing + 220, // Adjusted horizontal offset
+                  y: rowBaseY + 80 + (ipsIndex * 60) // Position below with better vertical spacing
                 },
                 dependencies: [`serviceaccount-${serviceAccount.name}`],
                 children: [],
@@ -1076,7 +1101,7 @@ export function VisualPreview({
             }
           });
         });
-        
+
         // Update currentY based on the number of rows needed with much better spacing calculation
         const totalRows = Math.ceil(filteredServiceAccounts.length / serviceAccountsPerRow);
         const maxSecretsPerServiceAccount = Math.max(
@@ -1084,28 +1109,28 @@ export function VisualPreview({
           0
         );
         // Add extra space for secrets positioned below service accounts
-        const extraSpaceForSecrets = maxSecretsPerServiceAccount > 0 ? maxSecretsPerServiceAccount * 80 + 80 : 0;
-        currentY += totalRows * 250 + extraSpaceForSecrets + 100; // Much improved spacing calculation
+        const extraSpaceForSecrets = maxSecretsPerServiceAccount > 0 ? maxSecretsPerServiceAccount * 60 + 60 : 0;
+        currentY += totalRows * 180 + extraSpaceForSecrets + 60; // Improved spacing calculation
       }
 
       // Add standalone roles in grid layout
       if (filterType === 'roles') {
         const rolesPerRow = 2;
         const roleSpacing = 300;
-        
+
         filteredRoles.forEach((role, index) => {
           const row = Math.floor(index / rolesPerRow);
           const col = index % rolesPerRow;
-          
+
           // Calculate role status
           const hasName = role.metadata.name && role.metadata.name.trim() !== '';
           const hasRules = role.rules && role.rules.length > 0;
-          const hasValidRules = hasRules && role.rules.every(r => 
+          const hasValidRules = hasRules && role.rules.every(r =>
             r.resources && r.resources.length > 0 && r.verbs && r.verbs.length > 0
           );
           let roleStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasValidRules) {
             roleStatus = 'healthy';
             syncStatus = 'synced';
@@ -1129,8 +1154,8 @@ export function VisualPreview({
             namespace: role.metadata.namespace,
             status: roleStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * roleSpacing, 
+            position: {
+              x: col * roleSpacing,
               y: currentY + (row * 200) // Increased spacing for role details
             },
             dependencies: [],
@@ -1146,7 +1171,7 @@ export function VisualPreview({
             colorClass: colorPalette[5] // Use purple color for roles
           });
         });
-        
+
         // Update currentY based on the number of rows needed
         const totalRows = Math.ceil(filteredRoles.length / rolesPerRow);
         currentY += totalRows * 200 + 40; // Increased spacing for roles
@@ -1156,20 +1181,20 @@ export function VisualPreview({
       if (filterType === 'clusterroles') {
         const clusterRolesPerRow = 2;
         const clusterRoleSpacing = 300;
-        
+
         filteredClusterRoles.forEach((clusterRole, index) => {
           const row = Math.floor(index / clusterRolesPerRow);
           const col = index % clusterRolesPerRow;
-          
+
           // Calculate cluster role status
           const hasName = clusterRole.metadata.name && clusterRole.metadata.name.trim() !== '';
           const hasRules = clusterRole.rules && clusterRole.rules.length > 0;
-          const hasValidRules = hasRules && clusterRole.rules.every(r => 
+          const hasValidRules = hasRules && clusterRole.rules.every(r =>
             r.resources && r.resources.length > 0 && r.verbs && r.verbs.length > 0
           );
           let clusterRoleStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasValidRules) {
             clusterRoleStatus = 'healthy';
             syncStatus = 'synced';
@@ -1193,8 +1218,8 @@ export function VisualPreview({
             namespace: 'cluster-wide', // Special namespace indicator
             status: clusterRoleStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * clusterRoleSpacing, 
+            position: {
+              x: col * clusterRoleSpacing,
               y: currentY + (row * 200) // Increased spacing for cluster role details
             },
             dependencies: [],
@@ -1210,7 +1235,7 @@ export function VisualPreview({
             colorClass: colorPalette[6] // Use different color for cluster roles
           });
         });
-        
+
         // Update currentY based on the number of rows needed
         const totalRows = Math.ceil(filteredClusterRoles.length / clusterRolesPerRow);
         currentY += totalRows * 200 + 40; // Increased spacing for cluster roles
@@ -1218,23 +1243,23 @@ export function VisualPreview({
 
       // Add standalone jobs/cronjobs in grid layout
       if (filterType === 'jobs' || filterType === 'cronjobs') {
-        const jobsToShow = filterType === 'jobs' 
+        const jobsToShow = filterType === 'jobs'
           ? filteredJobs.filter(job => job.type === 'job')
           : filteredJobs.filter(job => job.type === 'cronjob');
-        
+
         const jobsPerRow = 3;
         const jobSpacing = 250;
-        
+
         jobsToShow.forEach((job, index) => {
           const row = Math.floor(index / jobsPerRow);
           const col = index % jobsPerRow;
-          
+
           const hasName = job.name && job.name.trim() !== '';
           const hasNamespace = job.namespace && job.namespace.trim() !== '';
           const hasContainers = job.containers && job.containers.length > 0;
           let jobStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
           let syncStatus: 'synced' | 'outofsync' | 'unknown';
-          
+
           if (hasName && hasNamespace && hasContainers) {
             jobStatus = 'healthy';
             syncStatus = 'synced';
@@ -1253,8 +1278,8 @@ export function VisualPreview({
             namespace: job.namespace,
             status: jobStatus,
             syncStatus: syncStatus,
-            position: { 
-              x: col * jobSpacing, 
+            position: {
+              x: col * jobSpacing,
               y: currentY + (row * 120) // Compact spacing
             },
             dependencies: [],
@@ -1270,7 +1295,7 @@ export function VisualPreview({
             colorClass: job.type === 'cronjob' ? colorPalette[2] : colorPalette[3]
           });
         });
-        
+
         // Update currentY based on the number of rows needed
         const totalRows = Math.ceil(jobsToShow.length / jobsPerRow);
         currentY += totalRows * 120 + 40; // Compact spacing
@@ -1281,24 +1306,24 @@ export function VisualPreview({
     if (filteredClusterRoles.length > 0 && (filterType === 'all' || filterType === 'clusterroles')) {
       // Add some spacing before cluster roles section
       currentY += 60;
-      
+
       const clusterRolesPerRow = 2;
       const clusterRoleSpacing = 300;
-      
+
       filteredClusterRoles.forEach((clusterRole, clusterRoleIndex) => {
         const row = Math.floor(clusterRoleIndex / clusterRolesPerRow);
         const col = clusterRoleIndex % clusterRolesPerRow;
         const clusterRoleId = `clusterrole-${clusterRole.metadata.name}`;
-        
+
         // Calculate cluster role status
         const hasName = clusterRole.metadata.name && clusterRole.metadata.name.trim() !== '';
         const hasRules = clusterRole.rules && clusterRole.rules.length > 0;
-        const hasValidRules = hasRules && clusterRole.rules.every(r => 
+        const hasValidRules = hasRules && clusterRole.rules.every(r =>
           r.resources && r.resources.length > 0 && r.verbs && r.verbs.length > 0
         );
         let clusterRoleStatus: 'healthy' | 'warning' | 'error' | 'pending' | 'syncing';
         let syncStatus: 'synced' | 'outofsync' | 'unknown';
-        
+
         if (hasName && hasValidRules) {
           clusterRoleStatus = 'healthy';
           syncStatus = 'synced';
@@ -1323,8 +1348,8 @@ export function VisualPreview({
           namespace: 'cluster-wide', // Special namespace indicator
           status: clusterRoleStatus,
           syncStatus: syncStatus,
-          position: { 
-            x: col * clusterRoleSpacing, 
+          position: {
+            x: col * clusterRoleSpacing,
             y: currentY + (row * 200) // Increased spacing for cluster role details
           },
           dependencies: [],
@@ -1350,11 +1375,11 @@ export function VisualPreview({
     if (filterType === 'rolebindings') {
       const roleBindingsPerRow = 2;
       const roleBindingSpacing = 300;
-      
+
       filteredRoleBindings.forEach((rb, index) => {
         const row = Math.floor(index / roleBindingsPerRow);
         const col = index % roleBindingsPerRow;
-        
+
         nodes.push({
           id: `rolebinding-${rb.name}-${rb.namespace || 'cluster'}`,
           name: rb.name,
@@ -1362,8 +1387,8 @@ export function VisualPreview({
           namespace: rb.isClusterRoleBinding ? 'cluster-wide' : (rb.namespace || ''),
           status: 'healthy',
           syncStatus: 'synced',
-          position: { 
-            x: col * roleBindingSpacing, 
+          position: {
+            x: col * roleBindingSpacing,
             y: currentY + (row * 200)
           },
           dependencies: [],
@@ -1375,7 +1400,7 @@ export function VisualPreview({
           colorClass: rb.isClusterRoleBinding ? colorPalette[0] : colorPalette[3]
         });
       });
-      
+
       const totalRows = Math.ceil(filteredRoleBindings.length / roleBindingsPerRow);
       currentY += totalRows * 200 + 40;
     }
@@ -1578,7 +1603,7 @@ export function VisualPreview({
           acc[label.key] = label.value;
           return acc;
         }, {} as Record<string, string>);
-        
+
         const jobConfig = {
           name: job.name,
           namespace: job.namespace,
@@ -1602,7 +1627,7 @@ export function VisualPreview({
           acc[label.key] = label.value;
           return acc;
         }, {} as Record<string, string>);
-        
+
         const cronJobConfig = {
           name: job.name,
           namespace: job.namespace,
@@ -1649,7 +1674,7 @@ export function VisualPreview({
 
   const validServiceAccounts = serviceAccounts.filter(sa => sa.name);
   const validJobs = jobs.filter(job => job.name);
-  
+
   // Check if there are any resources for the current filter
   const hasFilteredResources = () => {
     if (filterType === 'all') {
@@ -1679,7 +1704,7 @@ export function VisualPreview({
     }
     return false;
   };
-  
+
   if (!hasFilteredResources()) {
     return (
       <div className="text-center py-16 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200  dark:bg-gradient-to-br dark:from-gray-800 dark:to-gray-900">
@@ -1702,7 +1727,7 @@ export function VisualPreview({
   return (
     <div
       ref={containerRef}
-      className="relative min-h-[600px] bg-gradient-to-br from-gray-50 to-gray-100 p-8 overflow-auto dark:from-gray-900 dark:to-gray-800"
+      className="relative min-h-[600px] bg-gradient-to-br from-gray-50 to-gray-100 p-8 dark:from-gray-900 dark:to-gray-800"
       style={{ width: '100%', height: '100%' }}
     >
       {/* Hint for double-click */}
@@ -1720,7 +1745,7 @@ export function VisualPreview({
         }}
       >
         <svg className="absolute inset-0 pointer-events-none" style={{ width: innerWidth, height: innerHeight }}>
-          {flowNodes.map(node => 
+          {flowNodes.map(node =>
             node.dependencies.map(depId => {
               const depNode = flowNodes.find(n => n.id === depId);
               if (!depNode) return null;
@@ -1761,9 +1786,8 @@ export function VisualPreview({
         {flowNodes.map(node => (
           <button
             key={node.id}
-            className={`absolute w-48 p-3 text-left rounded-lg border-2 shadow-lg select-none cursor-pointer ${
-              node.colorClass || getStatusColor(node.status)
-            }`}
+            className={`absolute w-48 p-3 text-left rounded-lg border-2 shadow-lg select-none cursor-pointer ${node.colorClass || getStatusColor(node.status)
+              }`}
             style={{
               left: `${node.position.x}px`,
               top: `${node.position.y}px`,
@@ -1883,14 +1907,12 @@ export function VisualPreview({
       {yamlModal?.open && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 dark:text-white">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full relative dark:bg-gray-800 dark:border-gray-700">
-            <button
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-300"
-              onClick={() => setYamlModal(null)}
-            >
-              <X className="w-6 h-6" />
-            </button>
             <div className="overflow-y-auto" style={{ maxHeight: '70vh' }}>
-              <YamlPreview yaml={yamlModal.yaml} name={yamlModal.title} />
+              <YamlPreview
+                yaml={yamlModal.yaml}
+                name={yamlModal.title}
+                onClose={() => setYamlModal(null)}
+              />
             </div>
           </div>
         </div>

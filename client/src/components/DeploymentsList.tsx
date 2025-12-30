@@ -5,21 +5,31 @@ import type { DeploymentConfig } from '../types';
 interface DeploymentsListProps {
   deployments: DeploymentConfig[];
   selectedIndex: number;
+  namespaceFilter?: string | null;
   onSelect: (index: number) => void;
   onEdit: () => void;
   onDelete: (index: number) => void;
   onDuplicate: (index: number) => void;
 }
 
-export function DeploymentsList({ 
-  deployments, 
-  selectedIndex, 
-  onSelect, 
-  onEdit, 
-  onDelete, 
-  onDuplicate 
+export function DeploymentsList({
+  deployments,
+  selectedIndex,
+  namespaceFilter,
+  onSelect,
+  onEdit,
+  onDelete,
+  onDuplicate
 }: DeploymentsListProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  const filteredDeployments = namespaceFilter
+    ? deployments.filter(d => d.namespace === namespaceFilter)
+    : deployments;
+
+  const getOriginalIndex = (deployment: DeploymentConfig) => {
+    return deployments.indexOf(deployment);
+  };
 
   const handleDeleteClick = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -46,7 +56,7 @@ export function DeploymentsList({
     const containerCount = deployment.containers?.length || 0;
     const primaryImage = deployment.containers?.[0]?.image || deployment.image || 'No image specified';
     const hasIngress = deployment.ingress?.enabled || false;
-    
+
     return {
       containerCount,
       primaryImage,
@@ -55,26 +65,33 @@ export function DeploymentsList({
     };
   };
 
+  if (filteredDeployments.length === 0 && namespaceFilter) {
+    return (
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+        <p>No deployments found in namespace "{namespaceFilter}"</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1 p-4">
-      {deployments.map((deployment, index) => {
+      {filteredDeployments.map((deployment) => {
+        const index = getOriginalIndex(deployment);
         const summary = getDeploymentSummary(deployment);
-        
+
         return (
           <button
             key={index}
-            className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 text-left w-full ${
-              selectedIndex === index
+            className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 text-left w-full ${selectedIndex === index
                 ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200 dark:bg-blue-900 dark:border-blue-800 dark:ring-blue-800'
                 : 'bg-white border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700'
-            }`}
+              }`}
             onClick={() => onSelect(index)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3 min-w-0 flex-1">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  deployment.appName ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-300'
-                }`} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${deployment.appName ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-300'
+                  }`} />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-gray-900 truncate dark:text-gray-100">
                     {deployment.appName || 'Untitled Deployment'}
@@ -102,7 +119,7 @@ export function DeploymentsList({
                   </div>
                 </div>
               </div>
-              
+
               {/* Action Buttons */}
               <div className="flex items-center space-x-1 flex-shrink-0">
                 {deleteConfirm === index ? (
@@ -154,7 +171,7 @@ export function DeploymentsList({
                 )}
               </div>
             </div>
-            
+
             {/* Delete confirmation warning */}
             {deleteConfirm === index && (
               <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 dark:bg-red-700 dark:border-red-800 dark:text-red-200">
@@ -163,7 +180,7 @@ export function DeploymentsList({
                   <span className="font-medium">Are you sure?</span>
                 </div>
                 <div>
-                  {deployments.length === 1 
+                  {deployments.length === 1
                     ? 'This will reset the deployment to default values.'
                     : 'This action cannot be undone.'
                   }

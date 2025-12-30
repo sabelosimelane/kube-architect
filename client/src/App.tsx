@@ -1,4 +1,4 @@
-import { AlertTriangle, Copy, Database, Container as Docker, Download, FileText, FolderOpen, GitBranch, Key, Link2, List, Menu, PlayCircle, Plus, Settings, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Copy, Database, Container as Docker, Download, FileText, FolderOpen, GitBranch, Globe, Key, Link2, List, Menu, PlayCircle, Plus, Settings, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfigMapsList } from './components/ConfigMapsList';
 import { DaemonSetForm } from './components/DaemonSetForm';
@@ -33,6 +33,7 @@ import {
   K8sStorageIcon
 } from './components/KubernetesIcons';
 import { NamespaceManager } from './components/NamespaceManager';
+import { NamespacePanel, ResourceCounts } from './components/NamespacePanel';
 import { ProjectSettingsManager } from './components/ProjectSettingsManager';
 import { RoleBindingManager } from './components/RoleBindingManager';
 import RoleWizardManager from './components/RoleWizardManager';
@@ -88,6 +89,8 @@ function App() {
   const [selectedSecret, setSelectedSecret] = useState<number>(0);
   const [selectedServiceAccount, setSelectedServiceAccount] = useState<number>(0);
   const [selectedRole, setSelectedRole] = useState<number>(0);
+  // Namespace-first navigation: null means show all namespaces, string means filter by that namespace
+  const [selectedNamespaceView, setSelectedNamespaceView] = useState<string | null>(null);
 
   const [previewMode, setPreviewMode] = useState<PreviewMode>(isPlayground ? 'yaml' : 'flow');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('deployments');
@@ -400,6 +403,21 @@ function App() {
     ...namespaces.map(ns => ns.name),
     ...deployments.map(d => d.namespace).filter(Boolean)
   ])];
+
+  // Calculate resource counts per namespace for NamespacePanel
+  const resourceCountsByNamespace: Record<string, ResourceCounts> = namespaces.reduce((acc, ns) => {
+    acc[ns.name] = {
+      deployments: deployments.filter(d => d.namespace === ns.name).length,
+      daemonSets: daemonSets.filter(d => d.namespace === ns.name).length,
+      configMaps: configMaps.filter(cm => cm.namespace === ns.name).length,
+      secrets: secrets.filter(s => s.namespace === ns.name).length,
+      serviceAccounts: serviceAccounts.filter(sa => sa.namespace === ns.name).length,
+      roles: roles.filter(r => r.metadata.namespace === ns.name).length,
+      jobs: jobs.filter(j => j.type === 'job' && j.namespace === ns.name).length,
+      cronJobs: jobs.filter(j => j.type === 'cronjob' && j.namespace === ns.name).length
+    };
+    return acc;
+  }, {} as Record<string, ResourceCounts>);
 
   // Helper function to remove old global labels and apply new ones
   const cleanAndMergeLabels = (
@@ -1298,7 +1316,7 @@ function App() {
                   }}
                   className={`text-lg sm:text-xl font-semibold text-gray-900 hover:text-blue-600 transition-colors duration-200 text-left dark:text-white`}
                 >
-                  Kube Composer
+                  Kube Architect
                 </button>
                 <p className={`block text-sm text-gray-500 dark:text-gray-400`}>
                   {projectSettings.name ? `Project: ${projectSettings.name}` : 'Kubernetes YAML Generator for developers'}
@@ -1472,224 +1490,305 @@ function App() {
             </div>
           </div>
 
-          {/* Grouped Sidebar Menu */}
+          {/* Grouped Sidebar Menu - Context-aware based on selectedNamespaceView */}
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-2">
-            {/* Workloads Group */}
-            <button
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
-              onClick={() => {
-                if (openGroup === 'workloads') {
-                  setOpenGroup(null);
-                } else {
-                  setOpenGroup('workloads');
-                  setSidebarTab('deployments');
-                }
-              }}
-              aria-expanded={openGroup === 'workloads'}
-            >
-              <span className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-blue-600" />
-                Workloads
-              </span>
-              <span>{openGroup === 'workloads' ? '▾' : '▸'}</span>
-            </button>
-            {openGroup === 'workloads' && (
-              <div className="pl-6 space-y-1">
+            {selectedNamespaceView === null ? (
+              /* Namespace Selection Mode */
+              <>
+                {/* Namespace List Header */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                    <K8sNamespaceIcon className="w-4 h-4 text-purple-600" />
+                    Namespaces
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{namespaces.length}</span>
+                </div>
+
+                {/* Namespace List */}
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {namespaces.map((ns) => {
+                    const counts = resourceCountsByNamespace[ns.name] || {
+                      deployments: 0, daemonSets: 0, configMaps: 0, secrets: 0,
+                      serviceAccounts: 0, roles: 0, jobs: 0, cronJobs: 0
+                    };
+                    const totalResources = Object.values(counts).reduce((a, b) => a + b, 0);
+
+                    return (
+                      <button
+                        key={ns.name}
+                        onClick={() => {
+                          setSelectedNamespaceView(ns.name);
+                          setOpenGroup('workloads');
+                          setSidebarTab('deployments');
+                        }}
+                        className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-700 dark:hover:text-purple-300 border border-transparent hover:border-purple-200 dark:hover:border-purple-800"
+                      >
+                        <span className="truncate">{ns.name}</span>
+                        <span className="ml-2 px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full">
+                          {totalResources}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Add Namespace Button */}
                 <button
-                  onClick={() => handleMenuClick('deployments')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'deployments'
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
-                    }`}
+                  onClick={() => setShowNamespaceManager(true)}
+                  className="flex items-center justify-center w-full px-3 py-2 mt-2 text-sm font-medium rounded-lg transition-all duration-200 text-purple-600 dark:text-purple-400 border border-dashed border-purple-300 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900/20"
                 >
-                  <K8sDeploymentIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'deployments' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Deployments
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Namespace
                 </button>
 
+                {/* Cluster Resources Section */}
+                <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Globe className="w-4 h-4 text-orange-500" />
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Cluster Resources</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedNamespaceView('__cluster__');
+                      setSidebarTab('security');
+                      setSecuritySubTab('roles');
+                    }}
+                    className="flex items-center w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 text-gray-700 dark:text-gray-200 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-700 dark:hover:text-orange-300"
+                  >
+                    <K8sSecurityIcon className="mr-3 flex-shrink-0 h-5 w-5 text-orange-500" />
+                    ClusterRoles
+                    <span className="ml-auto px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full">
+                      {clusterRoles.length}
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Resource Categories Mode (namespace selected) */
+              <>
+                {/* Back to Namespaces */}
                 <button
-                  onClick={() => handleMenuClick('daemonsets')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'daemonsets'
-                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 shadow-sm border border-indigo-100 dark:border-indigo-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 hover:text-indigo-600 dark:hover:text-indigo-300'
-                    }`}
+                  onClick={() => setSelectedNamespaceView(null)}
+                  className="flex items-center w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 mb-2"
                 >
-                  <K8sDaemonSetIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'daemonsets' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  DaemonSets
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  All Namespaces
                 </button>
 
-                <button
-                  onClick={() => handleMenuClick('namespaces')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'namespaces'
-                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
-                    }`}
-                >
-                  <K8sNamespaceIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'namespaces' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Namespaces
-                </button>
+                {/* Current Namespace Header */}
+                {selectedNamespaceView !== '__cluster__' && (
+                  <div className="flex items-center gap-2 px-3 py-2 mb-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                    <K8sNamespaceIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <span className="text-sm font-semibold text-purple-700 dark:text-purple-300 truncate">
+                      {selectedNamespaceView}
+                    </span>
+                  </div>
+                )}
 
-                <button
-                  onClick={() => handleMenuClick('jobs', 'jobs')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs'
-                    ? 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-300 shadow-sm border border-pink-100 dark:border-pink-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-pink-50/50 dark:hover:bg-pink-900/10 hover:text-pink-600 dark:hover:text-pink-300'
-                    }`}
-                >
-                  <K8sJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs' ? 'text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Jobs
-                </button>
+                {selectedNamespaceView === '__cluster__' ? (
+                  /* Cluster Resources View */
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-3 py-2 mb-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <Globe className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                      <span className="text-sm font-semibold text-orange-700 dark:text-orange-300">
+                        Cluster Resources
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSidebarTab('security');
+                        setSecuritySubTab('roles');
+                      }}
+                      className={`flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'roles'
+                        ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300 shadow-sm border border-orange-100 dark:border-orange-800'
+                        : 'text-gray-700 dark:text-gray-200 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 hover:text-orange-600 dark:hover:text-orange-300'
+                        }`}
+                    >
+                      <K8sSecurityIcon className="mr-3 flex-shrink-0 h-6 w-6 text-orange-500" />
+                      ClusterRoles
+                    </button>
+                  </div>
+                ) : (
+                  /* Namespace Resources View */
+                  <>
+                    {/* Workloads Group */}
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                      onClick={() => {
+                        if (openGroup === 'workloads') {
+                          setOpenGroup(null);
+                        } else {
+                          setOpenGroup('workloads');
+                          setSidebarTab('deployments');
+                        }
+                      }}
+                      aria-expanded={openGroup === 'workloads'}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Database className="w-4 h-4 text-blue-600" />
+                        Workloads
+                      </span>
+                      <span>{openGroup === 'workloads' ? '▾' : '▸'}</span>
+                    </button>
+                    {openGroup === 'workloads' && (
+                      <div className="pl-6 space-y-1">
+                        <button
+                          onClick={() => handleMenuClick('deployments')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'deployments'
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
+                            }`}
+                        >
+                          <K8sDeploymentIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'deployments' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          Deployments
+                        </button>
 
-                <button
-                  onClick={() => handleMenuClick('jobs', 'cronjobs')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs'
-                    ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300 shadow-sm border border-yellow-100 dark:border-yellow-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-300'
-                    }`}
-                >
-                  <K8sCronJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs' ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  CronJobs
-                </button>
+                        <button
+                          onClick={() => handleMenuClick('daemonsets')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'daemonsets'
+                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 shadow-sm border border-indigo-100 dark:border-indigo-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 hover:text-indigo-600 dark:hover:text-indigo-300'
+                            }`}
+                        >
+                          <K8sDaemonSetIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'daemonsets' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          DaemonSets
+                        </button>
 
+                        <button
+                          onClick={() => handleMenuClick('jobs', 'jobs')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs'
+                            ? 'bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-300 shadow-sm border border-pink-100 dark:border-pink-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-pink-50/50 dark:hover:bg-pink-900/10 hover:text-pink-600 dark:hover:text-pink-300'
+                            }`}
+                        >
+                          <K8sJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'jobs' ? 'text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          Jobs
+                        </button>
 
-              </div>
-            )}
-            {/* Storage Group */}
-            <button
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
-              onClick={() => {
-                if (openGroup === 'storage') {
-                  setOpenGroup(null);
-                } else {
-                  setOpenGroup('storage');
-                  setSidebarTab('storage');
-                  setStorageSubTab('configmaps');
-                }
-              }}
-              aria-expanded={openGroup === 'storage'}
-            >
-              <span className="flex items-center gap-2">
-                <K8sStorageIcon className="w-4 h-4 text-blue-600" />
-                Storage
-              </span>
-              <span>{openGroup === 'storage' ? '▾' : '▸'}</span>
-            </button>
-            {openGroup === 'storage' && (
-              <div className="pl-6 space-y-1">
-                <button
-                  onClick={() => handleMenuClick('storage', 'configmaps')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'configmaps'
-                    ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300 shadow-sm border border-green-100 dark:border-green-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-green-50/50 dark:hover:bg-green-900/10 hover:text-green-600 dark:hover:text-green-300'
-                    }`}
-                >
-                  <K8sConfigMapIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'configmaps' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  ConfigMaps
-                </button>
-                <button
-                  onClick={() => handleMenuClick('storage', 'secrets')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'secrets'
-                    ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300 shadow-sm border border-orange-100 dark:border-orange-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 hover:text-orange-600 dark:hover:text-orange-300'
-                    }`}
-                >
-                  <K8sSecretIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'secrets' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Secrets
-                </button>
+                        <button
+                          onClick={() => handleMenuClick('jobs', 'cronjobs')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs'
+                            ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300 shadow-sm border border-yellow-100 dark:border-yellow-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-300'
+                            }`}
+                        >
+                          <K8sCronJobIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'jobs' && jobsSubTab === 'cronjobs' ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          CronJobs
+                        </button>
+                      </div>
+                    )}
 
-                {/* Add back the disabled storage items */}
-                <button
-                  disabled
-                  className="flex items-center w-full px-2 py-2 text-sm font-medium rounded-md text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
-                >
-                  <K8sStorageIcon className="mr-3 flex-shrink-0 h-6 w-6 text-gray-400 dark:text-gray-600" />
-                  PersistentVolumes
-                </button>
+                    {/* Storage Group */}
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                      onClick={() => {
+                        if (openGroup === 'storage') {
+                          setOpenGroup(null);
+                        } else {
+                          setOpenGroup('storage');
+                          setSidebarTab('storage');
+                          setStorageSubTab('configmaps');
+                        }
+                      }}
+                      aria-expanded={openGroup === 'storage'}
+                    >
+                      <span className="flex items-center gap-2">
+                        <K8sStorageIcon className="w-4 h-4 text-green-600" />
+                        Storage
+                      </span>
+                      <span>{openGroup === 'storage' ? '▾' : '▸'}</span>
+                    </button>
+                    {openGroup === 'storage' && (
+                      <div className="pl-6 space-y-1">
+                        <button
+                          onClick={() => handleMenuClick('storage', 'configmaps')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'configmaps'
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300 shadow-sm border border-green-100 dark:border-green-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-green-50/50 dark:hover:bg-green-900/10 hover:text-green-600 dark:hover:text-green-300'
+                            }`}
+                        >
+                          <K8sConfigMapIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'configmaps' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          ConfigMaps
+                        </button>
+                        <button
+                          onClick={() => handleMenuClick('storage', 'secrets')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'storage' && storageSubTab === 'secrets'
+                            ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300 shadow-sm border border-orange-100 dark:border-orange-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 hover:text-orange-600 dark:hover:text-orange-300'
+                            }`}
+                        >
+                          <K8sSecretIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'storage' && storageSubTab === 'secrets' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          Secrets
+                        </button>
+                      </div>
+                    )}
 
-                <button
-                  disabled
-                  className="flex items-center w-full px-2 py-2 text-sm font-medium rounded-md text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
-                >
-                  <K8sStorageIcon className="mr-3 flex-shrink-0 h-6 w-6 text-gray-400 dark:text-gray-600" />
-                  PersistentVolumeClaims
-                </button>
-
-                <button
-                  disabled
-                  className="flex items-center w-full px-2 py-2 text-sm font-medium rounded-md text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
-                >
-                  <K8sStorageIcon className="mr-3 flex-shrink-0 h-6 w-6 text-gray-400 dark:text-gray-600" />
-                  StorageClasses
-                </button>
-              </div>
-            )}
-
-            {/* Security Group */}
-            <button
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
-              onClick={() => {
-                if (openGroup === 'security') {
-                  setOpenGroup(null);
-                } else {
-                  setOpenGroup('security');
-                  setSidebarTab('security');
-                  setSecuritySubTab('serviceaccounts');
-                }
-              }}
-              aria-expanded={openGroup === 'security'}
-            >
-              <span className="flex items-center gap-2">
-                <K8sSecurityIcon className="w-4 h-4 text-blue-600" />
-                Security
-              </span>
-              <span>{openGroup === 'security' ? '▾' : '▸'}</span>
-            </button>
-            {openGroup === 'security' && (
-              <div className="pl-6 space-y-1">
-                <button
-                  onClick={() => handleMenuClick('security', 'serviceaccounts')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts'
-                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300 shadow-sm border border-cyan-100 dark:border-cyan-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 hover:text-cyan-600 dark:hover:text-cyan-300'
-                    }`}
-                >
-                  <K8sServiceAccountIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Service Accounts
-                </button>
-                {/* RBAC Roles */}
-                <button
-                  onClick={() => handleMenuClick('security', 'roles')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'roles'
-                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
-                    }`}
-                >
-                  <K8sSecurityIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'roles' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  Roles
-                </button>
-                {/* RoleBindings - enabled */}
-                <button
-                  onClick={() => handleMenuClick('security', 'rolebindings')}
-                  className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'rolebindings'
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
-                    }`}
-                >
-                  <Link2 className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'rolebindings' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
-                    }`} />
-                  RoleBindings
-                </button>
-
-
-              </div>
+                    {/* Security Group */}
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                      onClick={() => {
+                        if (openGroup === 'security') {
+                          setOpenGroup(null);
+                        } else {
+                          setOpenGroup('security');
+                          setSidebarTab('security');
+                          setSecuritySubTab('serviceaccounts');
+                        }
+                      }}
+                      aria-expanded={openGroup === 'security'}
+                    >
+                      <span className="flex items-center gap-2">
+                        <K8sSecurityIcon className="w-4 h-4 text-cyan-600" />
+                        Security
+                      </span>
+                      <span>{openGroup === 'security' ? '▾' : '▸'}</span>
+                    </button>
+                    {openGroup === 'security' && (
+                      <div className="pl-6 space-y-1">
+                        <button
+                          onClick={() => handleMenuClick('security', 'serviceaccounts')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts'
+                            ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300 shadow-sm border border-cyan-100 dark:border-cyan-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 hover:text-cyan-600 dark:hover:text-cyan-300'
+                            }`}
+                        >
+                          <K8sServiceAccountIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'serviceaccounts' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          Service Accounts
+                        </button>
+                        <button
+                          onClick={() => handleMenuClick('security', 'roles')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'roles'
+                            ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 shadow-sm border border-purple-100 dark:border-purple-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 hover:text-purple-600 dark:hover:text-purple-300'
+                            }`}
+                        >
+                          <K8sSecurityIcon className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'roles' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          Roles
+                        </button>
+                        <button
+                          onClick={() => handleMenuClick('security', 'rolebindings')}
+                          className={`flex items-center w-full px-2 py-2 text-sm font-medium rounded-md transition-all duration-200 ${sidebarTab === 'security' && securitySubTab === 'rolebindings'
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 shadow-sm border border-blue-100 dark:border-blue-800'
+                            : 'text-gray-700 dark:text-gray-200 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 hover:text-blue-600 dark:hover:text-blue-300'
+                            }`}
+                        >
+                          <Link2 className={`mr-3 flex-shrink-0 h-6 w-6 ${sidebarTab === 'security' && securitySubTab === 'rolebindings' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          RoleBindings
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             )}
           </div>
 
@@ -2204,9 +2303,36 @@ function App() {
               </div>
             </div>
             <div className="p-4 sm:p-6 pb-8 ">
-              {previewMode === 'flow' && <VisualPreview deployments={deployments} daemonSets={daemonSets} namespaces={namespaces} configMaps={configMaps} secrets={secrets} serviceAccounts={serviceAccounts} roles={roles} clusterRoles={clusterRoles} jobs={jobs} containerRef={containerRef} filterType={getFilterType()} roleBindings={roleBindings} />}
-              {previewMode === 'summary' && <ResourceSummary deployments={deployments} daemonSets={daemonSets} namespaces={namespaces} configMaps={configMaps} secrets={secrets} serviceAccounts={serviceAccounts} roles={roles} clusterRoles={clusterRoles} jobs={jobs} />}
-              {previewMode === 'yaml' && <YamlPreview yaml={generatedYaml} />}
+              {/* Namespace-first navigation: show NamespacePanel when no namespace is selected */}
+              {selectedNamespaceView === null ? (
+                <NamespacePanel
+                  namespaces={namespaces}
+                  resourceCounts={resourceCountsByNamespace}
+                  onSelectNamespace={(ns) => setSelectedNamespaceView(ns)}
+                />
+              ) : (
+                <>
+                  {/* Back to namespaces button */}
+                  <div className="mb-4 flex items-center space-x-3">
+                    <button
+                      onClick={() => setSelectedNamespaceView(null)}
+                      className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 dark:text-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-white"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span>All Namespaces</span>
+                    </button>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-gray-400">/</span>
+                      <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-lg text-sm font-medium dark:bg-blue-900 dark:text-blue-200">
+                        {selectedNamespaceView}
+                      </span>
+                    </div>
+                  </div>
+                  {previewMode === 'flow' && <VisualPreview deployments={deployments} daemonSets={daemonSets} namespaces={namespaces} configMaps={configMaps} secrets={secrets} serviceAccounts={serviceAccounts} roles={roles} clusterRoles={clusterRoles} jobs={jobs} containerRef={containerRef} filterType={getFilterType()} roleBindings={roleBindings} namespaceFilter={selectedNamespaceView} />}
+                  {previewMode === 'summary' && <ResourceSummary deployments={deployments} daemonSets={daemonSets} namespaces={namespaces} configMaps={configMaps} secrets={secrets} serviceAccounts={serviceAccounts} roles={roles} clusterRoles={clusterRoles} jobs={jobs} />}
+                  {previewMode === 'yaml' && <YamlPreview yaml={generatedYaml} />}
+                </>
+              )}
             </div>
           </div>
         </div>

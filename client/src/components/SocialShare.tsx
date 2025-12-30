@@ -33,15 +33,15 @@ export function SocialShare({ className = '' }: SocialShareProps) {
       try {
         setIsLoadingStars(true);
         setApiError(null);
-        
+
         // Check cache first (cache for 5 minutes for debugging)
         const cacheKey = 'github-stars-kube-composer';
         const cached = localStorage.getItem(cacheKey);
-        
+
         if (cached) {
           const { count, timestamp } = JSON.parse(cached);
           const fiveMinutes = 5 * 60 * 1000; // Reduced cache time for debugging
-          
+
           if (Date.now() - timestamp < fiveMinutes) {
             console.log('Using cached star count:', count);
             setStarCount(count);
@@ -51,9 +51,9 @@ export function SocialShare({ className = '' }: SocialShareProps) {
         }
 
         console.log('Fetching GitHub stars from API...');
-        
+
         // Fetch from GitHub API
-        const response = await fetch('https://api.github.com/repos/same7ammar/kube-composer', {
+        const response = await fetch('https://api.github.com/repos/sabelosimelane/kube-architect', {
           headers: {
             'Accept': 'application/vnd.github.v3+json',
             'User-Agent': 'kube-composer-app'
@@ -65,12 +65,12 @@ export function SocialShare({ className = '' }: SocialShareProps) {
         if (response.ok) {
           const data: GitHubRepo = await response.json();
           console.log('GitHub API response data:', data);
-          
+
           const stars = data.stargazers_count || 0;
           console.log('Star count from API:', stars);
-          
+
           setStarCount(stars);
-          
+
           // Cache the result
           localStorage.setItem(cacheKey, JSON.stringify({
             count: stars,
@@ -80,7 +80,7 @@ export function SocialShare({ className = '' }: SocialShareProps) {
           const errorText = await response.text();
           console.error('GitHub API error:', response.status, errorText);
           setApiError(`API Error: ${response.status}`);
-          
+
           // Try to use cached value even if expired
           if (cached) {
             const { count } = JSON.parse(cached);
@@ -92,7 +92,7 @@ export function SocialShare({ className = '' }: SocialShareProps) {
       } catch (error) {
         console.error('Error fetching GitHub stars:', error);
         setApiError('Network Error');
-        
+
         // Try to use cached value even if expired
         const cached = localStorage.getItem('github-stars-kube-composer');
         if (cached) {
@@ -160,12 +160,12 @@ export function SocialShare({ className = '' }: SocialShareProps) {
 
       {/* GitHub star button */}
       <a
-        href="https://github.com/same7ammar/kube-composer"
+        href="https://github.com/sabelosimelane/kube-architect"
         target="_blank"
         rel="noopener noreferrer"
         className="group inline-flex items-center space-x-2 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-all duration-200 text-xs font-medium shadow-md hover:shadow-lg transform hover:scale-105 dark:bg-gray-700 dark:hover:bg-gray-500"
         title={`Star on GitHub${starCount !== null ? ` (${starCount} stars)` : ''}`}
-        aria-label="Star Kube Composer on GitHub"
+        aria-label="Star Kube Architect on GitHub"
       >
         <div className="flex items-center space-x-1">
           <Github className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
@@ -194,7 +194,7 @@ export function SocialShare({ className = '' }: SocialShareProps) {
       </a>
       {/* Report Issue button */}
       <a
-        href="https://github.com/same7ammar/kube-composer/issues/new?labels=bug,playground&template=bug_report.md&title=[Playground]%20"
+        href="https://github.com/sabelosimelane/kube-architect/issues/new?labels=bug,playground&template=bug_report.md&title=[Playground]%20"
         target="_blank"
         rel="noopener noreferrer"
         className="group inline-flex items-center space-x-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-200 text-xs font-medium shadow-md hover:shadow-lg transform hover:scale-105"
